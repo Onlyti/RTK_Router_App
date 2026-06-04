@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.util.Log
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
@@ -95,6 +96,7 @@ class SerialLink(
             io.start()
 
             val name = driver.device.productName ?: driver.javaClass.simpleName
+            Log.d(TAG, "serial open: driver=${driver.javaClass.simpleName} device=$name baud=$baud")
             onConnected(name)
         } catch (t: Throwable) {
             onDisconnected("open failed: ${t.message}")
@@ -122,6 +124,7 @@ class SerialLink(
     }
 
     companion object {
+        private const val TAG = "rtk"
         private const val ACTION_USB_PERMISSION = "com.ailab.rtkrouter.USB_PERMISSION"
         private const val WRITE_TIMEOUT_MS = 2000
     }

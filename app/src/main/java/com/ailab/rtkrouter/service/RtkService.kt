@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
@@ -94,6 +95,7 @@ class RtkService : LifecycleService() {
 
     private suspend fun resolveAndConnectNtrip() {
         val profile = config.activeProfile
+        Log.d(TAG, "resolve: host=${profile.host}:${profile.port} mode=${config.endpointMode} mount='${profile.preferredMount}'")
         if (profile.host.isBlank()) {
             error = ErrorInfo("Config", "L0", "caster host empty")
             return
@@ -101,19 +103,30 @@ class RtkService : LifecycleService() {
 
         var entries: List<StrEntry> = emptyList()
         if (config.endpointMode != EndpointMode.MANUAL) {
-            NtripClient.fetchSourcetable(profile)
-                .onSuccess { entries = it }
-                .onFailure { error = ErrorInfo("CasterDown", "L0", "sourcetable: ${it.message}") }
+            val res = NtripClient.fetchSourcetable(profile)
+            res.onSuccess {
+                entries = it
+                Log.d(TAG, "sourcetable: ${it.size} entries, vrs=${it.count { e -> e.requiresGga }}")
+            }
+            res.onFailure {
+                Log.w(TAG, "sourcetable fetch failed: ${it.message}", it)
+                error = ErrorInfo("CasterDown", "L0", "sourcetable: ${it.message}")
+                // No explicit mount to fall back on -> stop and surface the real reason.
+                if (profile.preferredMount.isBlank()) return
+            }
         }
 
         val (mount, requiresGga, mode) = chooseMount(profile.preferredMount, entries)
         if (mount.isBlank()) {
-            error = ErrorInfo("Config", "L0", "no mountpoint resolved")
+            val why = if (entries.isEmpty()) "sourcetable empty/failed" else "${entries.size} mounts, none selectable"
+            error = ErrorInfo("Config", "L0", "no mount: $why")
+            Log.w(TAG, "no mount resolved ($why)")
             return
         }
         resolvedMount = mount
         resolvedMode = mode
         ggaActive = requiresGga || config.sendGga
+        Log.d(TAG, "resolved mount=$mount mode=$mode gga=$ggaActive")
 
         startNtripStream(mount)
     }
@@ -248,6 +261,7 @@ class RtkService : LifecycleService() {
         const val ACTION_START = "com.ailab.rtkrouter.START"
         const val ACTION_STOP = "com.ailab.rtkrouter.STOP"
         const val EXTRA_CONFIG = "config"
+        private const val TAG = "rtk"
         private const val NOTIF_ID = 42
 
         private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

@@ -1,6 +1,7 @@
 package com.ailab.rtkrouter.ntrip
 
 import android.util.Base64
+import android.util.Log
 import com.ailab.rtkrouter.config.CasterProfile
 import com.ailab.rtkrouter.config.NtripVersion
 import java.io.BufferedReader
@@ -138,6 +139,7 @@ class NtripClient(
     /** Read header lines until blank; accept on 200 / ICY 200 OK. */
     private fun readHandshakeOk(ins: InputStream): Boolean {
         val first = readLine(ins) ?: return false
+        Log.d(TAG, "handshake /$mount -> '$first'")
         val ok = first.contains("200") || first.contains("ICY 200 OK", ignoreCase = true)
         // drain remaining header lines (v2) until blank line
         if (first.startsWith("HTTP", ignoreCase = true)) {
@@ -161,6 +163,7 @@ class NtripClient(
     }
 
     companion object {
+        private const val TAG = "rtk"
         private const val CONNECT_TIMEOUT_MS = 8000
         private const val READ_TIMEOUT_MS = 5000
         private const val GGA_INTERVAL_MS = 1000L
@@ -188,8 +191,10 @@ class NtripClient(
                 val reader = BufferedReader(InputStreamReader(sock.getInputStream(), Charsets.US_ASCII))
                 val entries = ArrayList<StrEntry>()
                 var line: String?
+                var firstLine = true
                 while (reader.readLine().also { line = it } != null) {
                     val l = line!!
+                    if (firstLine) { Log.d(TAG, "sourcetable response: '$l'"); firstLine = false }
                     if (l.startsWith("ENDSOURCETABLE")) break
                     if (!l.startsWith("STR;")) continue
                     val f = l.split(';')
