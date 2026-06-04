@@ -23,10 +23,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -123,6 +125,16 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
                     label = { Text(m.name) },
                 )
             }
+        }
+
+        // VRS mounts require GGA upload; AUTO sets this automatically, MANUAL needs it forced.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Send GGA (VRS)", style = MaterialTheme.typography.labelLarge)
+            Switch(checked = config.sendGga, onCheckedChange = vm::setSendGga)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
