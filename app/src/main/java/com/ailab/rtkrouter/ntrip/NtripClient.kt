@@ -12,6 +12,23 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Rank a sourcetable format string for F9P/OEM7 preference. Higher = better.
+ * RTCM 3.2+ (MSM-capable) preferred over 3.1/3.0; CMR/CMR+ rejected (-1).
+ * Some casters serve a stale/non-functional RTCM 3.1 VRS (no bytes) while 3.2 works.
+ */
+fun rtcmFormatRank(format: String): Int {
+    val f = format.uppercase().replace(" ", "")
+    return when {
+        "RTCM3.3" in f -> 5
+        "RTCM3.2" in f -> 4
+        "RTCM3" in f && "3.1" !in f && "3.0" !in f -> 3  // generic RTCM3
+        "RTCM3.1" in f -> 2
+        "RTCM3.0" in f -> 1
+        else -> -1                                        // CMR, CMR+, RTCM2, ...
+    }
+}
+
 /** One sourcetable STR record (subset of NTRIP fields we care about). */
 data class StrEntry(
     val mount: String,
@@ -131,7 +148,7 @@ class NtripClient(
         if (profile.ntripVersion == NtripVersion.V2) sb.append("Ntrip-Version: Ntrip/2.0\r\n")
         sb.append("User-Agent: NTRIP rtk-router/0.1\r\n")
         sb.append("Authorization: Basic $auth\r\n")
-        sb.append("Connection: close\r\n")
+        // No "Connection: close" — this is a persistent live stream.
         sb.append("\r\n")
         return sb.toString()
     }

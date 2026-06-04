@@ -9,6 +9,7 @@ import com.ailab.rtkrouter.config.EndpointMode
 import com.ailab.rtkrouter.config.RtkConfig
 import com.ailab.rtkrouter.ntrip.NtripClient
 import com.ailab.rtkrouter.ntrip.StrEntry
+import com.ailab.rtkrouter.ntrip.rtcmFormatRank
 import com.ailab.rtkrouter.service.RtkService
 import com.ailab.rtkrouter.service.RtkState
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
     fun setPass(v: String) = updateProfile { it.copy(pass = v) }
     fun setMount(v: String) = updateProfile { it.copy(preferredMount = v.trim()) }
     fun setBaud(v: Int) = update { it.copy(baud = v) }
+    fun setSerialPortIndex(v: Int) = update { it.copy(serialPortIndex = v) }
     fun setEndpointMode(m: EndpointMode) = update { it.copy(endpointMode = m) }
     fun setSendGga(v: Boolean) = update { it.copy(sendGga = v) }
 
@@ -62,10 +64,9 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _scan.value = NtripClient.fetchSourcetable(profile).fold(
                 onSuccess = { list ->
-                    // RTCM3 first (F9P-usable), then by mount name.
+                    // Best RTCM3 first (3.2 > generic > 3.1 > others), then by mount name.
                     val sorted = list.sortedWith(
-                        compareByDescending<StrEntry> { it.format.contains("RTCM 3") || it.format.contains("RTCM3") }
-                            .thenBy { it.mount },
+                        compareByDescending<StrEntry> { rtcmFormatRank(it.format) }.thenBy { it.mount },
                     )
                     ScanState.Done(sorted)
                 },

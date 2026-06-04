@@ -16,6 +16,7 @@ import com.ailab.rtkrouter.gnss.LocationHub
 import com.ailab.rtkrouter.gnss.Nmea
 import com.ailab.rtkrouter.ntrip.NtripClient
 import com.ailab.rtkrouter.ntrip.StrEntry
+import com.ailab.rtkrouter.ntrip.rtcmFormatRank
 import com.ailab.rtkrouter.serial.SerialLink
 import com.ailab.rtkrouter.ui.MainActivity
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,7 @@ class RtkService : LifecycleService() {
     @Volatile private var ntripConnected = false
     @Volatile private var serialConnected = false
     @Volatile private var serialDeviceName = ""
+    @Volatile private var serialPortCount = 0
     @Volatile private var detail = "starting"
     @Volatile private var error = ErrorInfo()
 
@@ -83,7 +85,11 @@ class RtkService : LifecycleService() {
         serial = SerialLink(
             context = this,
             baud = config.baud,
-            onConnected = { name -> serialConnected = true; serialDeviceName = name; detail = "serial: $name" },
+            portIndex = config.serialPortIndex,
+            onConnected = { name, portCount ->
+                serialConnected = true; serialDeviceName = name; serialPortCount = portCount
+                detail = "serial: $name (port ${config.serialPortIndex}/$portCount)"
+            },
             onDisconnected = { reason ->
                 serialConnected = false
                 error = ErrorInfo("Serial", "L0", reason)
@@ -144,9 +150,11 @@ class RtkService : LifecycleService() {
         if (entries.isEmpty()) return Triple("", false, "")
 
         if (config.endpointMode == EndpointMode.AUTO) {
-            // Prefer an RTCM3 VRS mount; F9P (and most u-blox/NovAtel) cannot use CMR/CMR+.
+            // Prefer the highest-ranked RTCM3 VRS (3.2 > generic > 3.1); F9P/OEM7 cannot
+            // use CMR/CMR+, and some casters' RTCM 3.1 VRS serves no data.
             val vrsList = entries.filter { it.requiresGga }
-            val vrs = vrsList.firstOrNull { it.format.contains("RTCM 3") || it.format.contains("RTCM3") }
+            val vrs = vrsList.filter { rtcmFormatRank(it.format) >= 0 }
+                .maxByOrNull { rtcmFormatRank(it.format) }
                 ?: vrsList.firstOrNull()
             if (vrs != null) return Triple(vrs.mount, true, "VRS")
         }
@@ -185,14 +193,28 @@ class RtkService : LifecycleService() {
         return gga
     }
 
+    private val nmeaBuf = StringBuilder()
+
     private fun onSerialData(bytes: ByteArray) {
-        // Receiver streams NMEA; parse GGA lines for fix quality + position.
-        val text = String(bytes, Charsets.US_ASCII)
-        for (line in text.split('\n')) {
-            val gga = Nmea.parseGga(line) ?: continue
-            lastFixQuality = gga.quality
-            rxFix = gga
-            lastNmea = line.trim()
+        // Receiver streams NMEA in arbitrary USB chunk boundaries; a GGA can straddle
+        // two callbacks. Accumulate and only parse complete '\n'-terminated lines.
+        // Binary-tolerant (NovAtel may interleave OEM7 binary); non-GGA lines ignored.
+        synchronized(nmeaBuf) {
+            nmeaBuf.append(String(bytes, Charsets.US_ASCII))
+            if (nmeaBuf.length > NMEA_BUF_CAP) {            // bound against binary spew / no newline
+                nmeaBuf.delete(0, nmeaBuf.length - NMEA_BUF_CAP)
+            }
+            var nl = nmeaBuf.indexOf("\n")
+            while (nl >= 0) {
+                val line = nmeaBuf.substring(0, nl)
+                nmeaBuf.delete(0, nl + 1)
+                Nmea.parseGga(line)?.let { gga ->
+                    lastFixQuality = gga.quality
+                    rxFix = gga
+                    lastNmea = line.trim()
+                }
+                nl = nmeaBuf.indexOf("\n")
+            }
         }
     }
 
@@ -235,6 +257,8 @@ class RtkService : LifecycleService() {
                     ntripConnected = ntripConnected,
                     serialConnected = serialConnected,
                     deviceName = serialDeviceName,
+                    serialPortCount = serialPortCount,
+                    serialPortIndex = config.serialPortIndex,
                     activeProfileName = config.activeProfile.name,
                     activeMount = resolvedMount,
                     activeMode = resolvedMode,
@@ -293,6 +317,7 @@ class RtkService : LifecycleService() {
         private const val TAG = "rtk"
         private const val NOTIF_ID = 42
         private const val RATE_WINDOW_MS = 4000L
+        private const val NMEA_BUF_CAP = 4096
 
         private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val r = 6371.0

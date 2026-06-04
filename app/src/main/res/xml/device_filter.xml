@@ -13,8 +13,8 @@
     <usb-device vendor-id="6790" />        <!-- 0x1A86 -->
     <!-- Prolific PL2303 -->
     <usb-device vendor-id="1659" />        <!-- 0x067B -->
-    <!-- NovAtel -->
-    <usb-device vendor-id="3727" />        <!-- 0x0E8F (varies by OEM7 board) -->
+    <!-- NovAtel Inc. (OEM7 native USB) -->
+    <usb-device vendor-id="2519" />        <!-- 0x09D7. 실기기 lsusb 로 확인 권장 (integrator 보드는 re-VID 가능) -->
     <!-- Generic CDC-ACM (Arduino etc.) -->
     <usb-device vendor-id="9025" />        <!-- 0x2341 -->
 </resources>

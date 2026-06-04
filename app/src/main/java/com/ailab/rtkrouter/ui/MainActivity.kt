@@ -122,6 +122,18 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
             }
         }
 
+        // USB port index — NovAtel OEM7 exposes multiple CDC ports; F9P uses 0.
+        Text("USB port (NovAtel multi-port)", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (idx in 0..2) {
+                FilterChip(
+                    selected = config.serialPortIndex == idx,
+                    onClick = { vm.setSerialPortIndex(idx) },
+                    label = { Text("$idx") },
+                )
+            }
+        }
+
         Text("Endpoint mode", style = MaterialTheme.typography.labelLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (m in EndpointMode.entries) {
@@ -194,7 +206,10 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Status", style = MaterialTheme.typography.titleMedium)
             line("NTRIP", if (s.ntripConnected) "connected" else "down")
-            line("Serial", if (s.serialConnected) "${s.deviceName}" else "down")
+            line(
+                "Serial",
+                if (s.serialConnected) "${s.deviceName} (port ${s.serialPortIndex}/${s.serialPortCount})" else "down",
+            )
             line("Provider/Mount", "${s.activeProfileName} / ${s.activeMount.ifBlank { "-" }}")
             line("Mode / GGA", "${s.activeMode.ifBlank { "-" }} / ${if (s.ggaActive) "on" else "off"}")
             line("Failover", s.failoverLevel)

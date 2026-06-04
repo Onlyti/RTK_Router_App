@@ -60,6 +60,9 @@ data class RtkConfig(
     val activeIndex: Int = 0,
     val endpointMode: EndpointMode = EndpointMode.AUTO,
     val baud: Int = 115200,
+    /** USB serial port index. NovAtel OEM7 exposes multiple CDC ports; the
+     *  RTCM3-input port is often not 0. u-blox F9P uses 0. */
+    val serialPortIndex: Int = 0,
     /** Auto-set from the resolved mount's requiresGga; user can force on. */
     val sendGga: Boolean = false,
     val validateRtcm3: Boolean = false,

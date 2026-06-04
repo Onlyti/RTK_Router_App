@@ -23,7 +23,9 @@ import java.util.concurrent.atomic.AtomicLong
 class SerialLink(
     private val context: Context,
     private val baud: Int,
-    private val onConnected: (deviceName: String) -> Unit,
+    /** Which CDC port to open (NovAtel OEM7 has multiple; u-blox F9P uses 0). */
+    private val portIndex: Int,
+    private val onConnected: (deviceName: String, portCount: Int) -> Unit,
     private val onDisconnected: (reason: String) -> Unit,
     /** Bytes read from the receiver (typically NMEA). */
     private val onData: (ByteArray) -> Unit,
@@ -77,7 +79,12 @@ class SerialLink(
                 ?: run { onDisconnected("device detached"); return }
             val connection = usbManager.openDevice(driver.device)
                 ?: run { onDisconnected("openDevice failed"); return }
-            val p = driver.ports[0]
+            val portCount = driver.ports.size
+            val idx = portIndex.coerceIn(0, portCount - 1)
+            if (portIndex >= portCount) {
+                Log.w(TAG, "portIndex $portIndex out of range (device has $portCount), using $idx")
+            }
+            val p = driver.ports[idx]
             p.open(connection)
             p.setParameters(baud, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             port = p
@@ -96,8 +103,8 @@ class SerialLink(
             io.start()
 
             val name = driver.device.productName ?: driver.javaClass.simpleName
-            Log.d(TAG, "serial open: driver=${driver.javaClass.simpleName} device=$name baud=$baud")
-            onConnected(name)
+            Log.d(TAG, "serial open: driver=${driver.javaClass.simpleName} device=$name port=$idx/$portCount baud=$baud")
+            onConnected(name, portCount)
         } catch (t: Throwable) {
             onDisconnected("open failed: ${t.message}")
         }

@@ -17,6 +17,8 @@ data class RtkStatus(
     val ntripConnected: Boolean = false,
     val serialConnected: Boolean = false,
     val deviceName: String = "",
+    val serialPortCount: Int = 0,   // total CDC ports on the device (NovAtel = multiple)
+    val serialPortIndex: Int = 0,   // which port is open
     val activeProfileName: String = "",
     val activeMount: String = "",
     val activeMode: String = "",     // VRS | NEAREST | MANUAL
