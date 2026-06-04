@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -39,9 +40,28 @@ class RtkService : LifecycleService() {
     private var config: RtkConfig = RtkConfig()
 
     private var serial: SerialLink? = null
-    private var ntrip: NtripClient? = null
 
-    private val sessionRx = AtomicLong(0)   // RTCM bytes from caster
+    /** One hot-standby base stream. Only the active one is forwarded to serial. */
+    private class BaseStream(
+        val id: Int,
+        val mount: String,
+        val requiresGga: Boolean,
+        val distanceKm: Double,   // from phone GPS to this fixed base; NaN for VRS/unknown
+    ) {
+        @Volatile var client: NtripClient? = null
+        @Volatile var connected = false
+        @Volatile var lastDataMs = 0L
+        @Volatile var nextRetryMs = 0L
+        @Volatile var retryCount = 0
+        val rxBytes = AtomicLong(0)
+    }
+
+    // Built once on resolve (IO thread), then read by the status loop (Main). Immutable
+    // list behind a volatile ref avoids concurrent-modification; per-stream state is volatile.
+    @Volatile private var streams: List<BaseStream> = emptyList()
+    @Volatile private var activeStreamId = -1
+
+    private val sessionRx = AtomicLong(0)   // RTCM bytes from caster (all streams)
     private val sessionTx = AtomicLong(0)   // GGA bytes to caster
     @Volatile private var lastRtcmAtMs = 0L
     @Volatile private var startedAtMs = 0L
@@ -55,6 +75,9 @@ class RtkService : LifecycleService() {
     @Volatile private var resolvedMode = ""
     @Volatile private var ggaActive = false
     @Volatile private var ntripConnected = false
+    @Volatile private var healthyCount = 0
+    @Volatile private var streamsInfo = ""
+    @Volatile private var failoverLevel = "L0"
     @Volatile private var serialConnected = false
     @Volatile private var serialDeviceName = ""
     @Volatile private var serialPortCount = 0
@@ -125,64 +148,85 @@ class RtkService : LifecycleService() {
             }
         }
 
-        val (mount, requiresGga, mode) = chooseMount(profile.preferredMount, entries)
-        if (mount.isBlank()) {
+        val (targets, mode) = chooseTargets(profile.preferredMount, entries)
+        if (targets.isEmpty()) {
             val why = if (entries.isEmpty()) "sourcetable empty/failed" else "${entries.size} mounts, none selectable"
             error = ErrorInfo("Config", "L0", "no mount: $why")
             Log.w(TAG, "no mount resolved ($why)")
             return
         }
-        resolvedMount = mount
         resolvedMode = mode
-        ggaActive = requiresGga || config.sendGga
-        Log.d(TAG, "resolved mount=$mount mode=$mode gga=$ggaActive")
+        ggaActive = targets.any { it.requiresGga } || config.sendGga
+        resolvedMount = targets.first().mount
+        Log.d(TAG, "resolved ${targets.size} stream(s) mode=$mode gga=$ggaActive: ${targets.joinToString { it.mount }}")
 
-        startNtripStream(mount)
+        val list = targets.mapIndexed { i, t -> BaseStream(i, t.mount, t.requiresGga, t.distanceKm) }
+        list.forEach { startStream(it) }
+        streams = list
+        activeStreamId = 0
     }
 
-    /** Returns (mount, requiresGga, modeLabel). */
-    private fun chooseMount(preferred: String, entries: List<StrEntry>): Triple<String, Boolean, String> {
-        // MANUAL or explicit preferred mount wins.
+    private class Target(val mount: String, val requiresGga: Boolean, val distanceKm: Double)
+
+    /** VRS -> single; fixed -> top-N nearest (sorted, distance attached). */
+    private fun chooseTargets(preferred: String, entries: List<StrEntry>): Pair<List<Target>, String> {
+        // MANUAL or explicit preferred mount wins -> single stream.
         if (config.endpointMode == EndpointMode.MANUAL || preferred.isNotBlank()) {
             val e = entries.firstOrNull { it.mount == preferred }
-            return Triple(preferred, e?.requiresGga ?: config.sendGga, "MANUAL")
+            return listOf(Target(preferred, e?.requiresGga ?: config.sendGga, Double.NaN)) to "MANUAL"
         }
-        if (entries.isEmpty()) return Triple("", false, "")
+        if (entries.isEmpty()) return emptyList<Target>() to ""
 
         if (config.endpointMode == EndpointMode.AUTO) {
-            // Prefer the highest-ranked RTCM3 VRS (3.2 > generic > 3.1); F9P/OEM7 cannot
-            // use CMR/CMR+, and some casters' RTCM 3.1 VRS serves no data.
+            // VRS first: highest-ranked RTCM3 VRS. Single stream (virtual base follows you,
+            // so hot-standby is unnecessary).
             val vrsList = entries.filter { it.requiresGga }
             val vrs = vrsList.filter { rtcmFormatRank(it.format) >= 0 }
                 .maxByOrNull { rtcmFormatRank(it.format) }
                 ?: vrsList.firstOrNull()
-            if (vrs != null) return Triple(vrs.mount, true, "VRS")
+            if (vrs != null) return listOf(Target(vrs.mount, true, Double.NaN)) to "VRS"
         }
-        // NEAREST (or AUTO with no VRS): pick closest fixed station by phone GPS.
+        // NEAREST (or AUTO with no VRS): top-N nearest fixed stations as hot-standby.
         val loc = location.lastLocation()
-        val fixed = entries.filter { !it.requiresGga && !it.lat.isNaN() && !it.lon.isNaN() }
-        val pick = if (loc != null && fixed.isNotEmpty()) {
-            fixed.minByOrNull { haversineKm(loc.latitude, loc.longitude, it.lat, it.lon) }
-        } else {
-            entries.firstOrNull()
+        val fixed = entries.filter {
+            !it.requiresGga && rtcmFormatRank(it.format) >= 0 && !it.lat.isNaN() && !it.lon.isNaN()
         }
-        return Triple(pick?.mount ?: "", pick?.requiresGga ?: false, "NEAREST")
+        val n = config.hotStandbyCount.coerceIn(1, 5)
+        val picked = if (loc != null && fixed.isNotEmpty()) {
+            fixed.map { it to haversineKm(loc.latitude, loc.longitude, it.lat, it.lon) }
+                .sortedBy { it.second }
+                .take(n)
+                .map { Target(it.first.mount, it.first.requiresGga, it.second) }
+        } else {
+            entries.take(n).map { Target(it.mount, it.requiresGga, Double.NaN) }
+        }
+        return picked to "NEAREST"
     }
 
-    private fun startNtripStream(mount: String) {
-        ntrip?.stop()
-        ntrip = NtripClient(
+    private fun startStream(s: BaseStream) {
+        s.client?.stop()
+        s.client = NtripClient(
             profile = config.activeProfile,
-            mount = mount,
-            onRtcm = { buf, n ->
-                sessionRx.addAndGet(n.toLong())
-                lastRtcmAtMs = System.currentTimeMillis()
-                serial?.write(buf, n)
+            mount = s.mount,
+            onRtcm = { buf, n -> onStreamRtcm(s, buf, n) },
+            onState = { connected, d ->
+                s.connected = connected
+                if (connected) s.retryCount = 0
+                if (s.id == activeStreamId) detail = d
             },
-            onState = { connected, d -> ntripConnected = connected; detail = d },
             ggaProvider = { buildGga() },
-            sendGga = ggaActive,
+            sendGga = s.requiresGga || config.sendGga,
         ).also { it.start() }
+    }
+
+    private fun onStreamRtcm(s: BaseStream, buf: ByteArray, n: Int) {
+        s.rxBytes.addAndGet(n.toLong())
+        s.lastDataMs = System.currentTimeMillis()
+        sessionRx.addAndGet(n.toLong())          // total cellular usage (all streams)
+        if (s.id == activeStreamId) {            // forward only the active stream
+            lastRtcmAtMs = s.lastDataMs
+            serial?.write(buf, n)
+        }
     }
 
     private fun buildGga(): String? {
@@ -218,6 +262,54 @@ class RtkService : LifecycleService() {
         }
     }
 
+    /**
+     * Hot-standby supervisor: keep all streams warm (auto-reconnect with backoff),
+     * forward only the active stream, switch to the nearest healthy one if active dies
+     * (make-before-break — the backup is already flowing, so no network gap).
+     */
+    private fun superviseStreams(now: Long) {
+        if (streams.isEmpty()) return
+        val deadMs = config.failover.deadTimeoutSec * 1000L
+        fun healthy(s: BaseStream) = s.connected && s.lastDataMs > 0 && now - s.lastDataMs < deadMs
+
+        if (config.autoReconnect) {
+            for (s in streams) {
+                if (!s.connected && now >= s.nextRetryMs) {
+                    val backoff = minOf(1L shl s.retryCount.coerceIn(0, 5), config.failover.backoffMaxSec.toLong()) * 1000L
+                    s.nextRetryMs = now + backoff
+                    s.retryCount++
+                    Log.d(TAG, "stream ${s.id} ${s.mount} reconnect (retry ${s.retryCount})")
+                    startStream(s)
+                }
+            }
+        }
+
+        val active = streams.find { it.id == activeStreamId }
+        if (active == null || !healthy(active)) {
+            val next = streams.firstOrNull { healthy(it) }   // streams in nearest order
+            if (next != null && next.id != activeStreamId) {
+                Log.d(TAG, "active switch $activeStreamId -> ${next.id} (${next.mount})")
+                activeStreamId = next.id
+                resolvedMount = next.mount
+            }
+        } else {
+            resolvedMount = active.mount
+        }
+
+        ntripConnected = streams.any { it.connected }
+        healthyCount = streams.count { healthy(it) }
+        failoverLevel = if (activeStreamId <= 0) "L0" else "L1"   // L1 = running on a backup base
+        streamsInfo = streams.joinToString(" | ") { s ->
+            val star = if (s.id == activeStreamId) "*" else ""
+            val dist = if (s.distanceKm.isNaN()) "" else String.format(Locale.US, " %.1fkm", s.distanceKm)
+            val st = if (healthy(s)) "ok" else if (s.connected) "stale" else "down"
+            "$star${s.mount}$dist $st"
+        }
+        if (healthyCount == 0 && now - startedAtMs > 5000) {
+            error = ErrorInfo("NoRtcmData", failoverLevel, "no healthy base stream")
+        }
+    }
+
     /** Smoothed RTCM rate (B/s) over the sample window. */
     private fun windowedRate(): Long {
         val w = rateWindow
@@ -239,17 +331,7 @@ class RtkService : LifecycleService() {
             }
             val rate = windowedRate()
 
-            // byte watchdog (DESIGN.md 3.3 failure #4): connected but no RTCM.
-            if (ntripConnected && lastRtcmAtMs > 0 &&
-                now - lastRtcmAtMs > config.failover.deadTimeoutSec * 1000L
-            ) {
-                error = ErrorInfo("NoRtcmData", "L0", "connected but RTCM stalled ${config.failover.deadTimeoutSec}s")
-                if (config.autoReconnect) {
-                    detail = "watchdog: reconnecting $resolvedMount"
-                    lastRtcmAtMs = now
-                    startNtripStream(resolvedMount)
-                }
-            }
+            superviseStreams(now)
 
             RtkState.update(
                 RtkStatus(
@@ -263,7 +345,10 @@ class RtkService : LifecycleService() {
                     activeMount = resolvedMount,
                     activeMode = resolvedMode,
                     ggaActive = ggaActive,
-                    failoverLevel = "L0",
+                    failoverLevel = failoverLevel,
+                    streamCount = streams.size,
+                    healthyCount = healthyCount,
+                    streamsInfo = streamsInfo,
                     rtcmBytesPerSec = if (rate < 0) 0 else rate,
                     sessionRxBytes = rx,
                     sessionTxBytes = sessionTx.get(),
@@ -303,7 +388,8 @@ class RtkService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        ntrip?.stop()
+        streams.forEach { it.client?.stop() }
+        streams = emptyList()
         serial?.close()
         if (this::location.isInitialized) location.stop()
         RtkState.reset()

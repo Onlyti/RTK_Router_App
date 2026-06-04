@@ -63,6 +63,10 @@ data class RtkConfig(
     /** USB serial port index. NovAtel OEM7 exposes multiple CDC ports; the
      *  RTCM3-input port is often not 0. u-blox F9P uses 0. */
     val serialPortIndex: Int = 0,
+    /** Hot-standby: number of nearest FIXED base stations to keep connected in
+     *  parallel, forwarding only the healthiest (make-before-break). VRS ignores
+     *  this (single virtual base already follows you). 1 = single base. */
+    val hotStandbyCount: Int = 3,
     /** Auto-set from the resolved mount's requiresGga; user can force on. */
     val sendGga: Boolean = false,
     val validateRtcm3: Boolean = false,

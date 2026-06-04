@@ -47,6 +47,7 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
     fun setMount(v: String) = updateProfile { it.copy(preferredMount = v.trim()) }
     fun setBaud(v: Int) = update { it.copy(baud = v) }
     fun setSerialPortIndex(v: Int) = update { it.copy(serialPortIndex = v) }
+    fun setHotStandbyCount(v: Int) = update { it.copy(hotStandbyCount = v) }
     fun setEndpointMode(m: EndpointMode) = update { it.copy(endpointMode = m) }
     fun setSendGga(v: Boolean) = update { it.copy(sendGga = v) }
 

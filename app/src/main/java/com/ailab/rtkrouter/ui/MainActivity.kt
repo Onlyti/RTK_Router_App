@@ -145,6 +145,18 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
             }
         }
 
+        // Hot-standby: N nearest fixed bases kept warm (fixed-base only; VRS uses 1).
+        Text("Standby bases (fixed only)", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (c in 1..3) {
+                FilterChip(
+                    selected = config.hotStandbyCount == c,
+                    onClick = { vm.setHotStandbyCount(c) },
+                    label = { Text("$c") },
+                )
+            }
+        }
+
         // VRS mounts require GGA upload; AUTO sets this automatically, MANUAL needs it forced.
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -213,6 +225,16 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
             line("Provider/Mount", "${s.activeProfileName} / ${s.activeMount.ifBlank { "-" }}")
             line("Mode / GGA", "${s.activeMode.ifBlank { "-" }} / ${if (s.ggaActive) "on" else "off"}")
             line("Failover", s.failoverLevel)
+            if (s.streamCount > 0) {
+                line("Bases", "${s.healthyCount}/${s.streamCount} healthy")
+                if (s.streamsInfo.isNotBlank()) {
+                    Text(
+                        s.streamsInfo,   // *active, distance km, ok/stale/down
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
             val fix = if (s.lastFixQuality >= 0)
                 com.ailab.rtkrouter.gnss.Nmea.fixQualityLabel(s.lastFixQuality) else "-"
             line("Fix", fix)

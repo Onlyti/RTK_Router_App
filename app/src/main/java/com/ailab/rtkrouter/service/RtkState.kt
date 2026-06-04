@@ -24,6 +24,9 @@ data class RtkStatus(
     val activeMode: String = "",     // VRS | NEAREST | MANUAL
     val ggaActive: Boolean = false,
     val failoverLevel: String = "L0",
+    val streamCount: Int = 0,        // hot-standby streams open
+    val healthyCount: Int = 0,       // of which currently healthy
+    val streamsInfo: String = "",    // per-stream summary for UI
     // data usage
     val rtcmBytesPerSec: Long = 0,
     val sessionRxBytes: Long = 0,    // RTCM received from caster
