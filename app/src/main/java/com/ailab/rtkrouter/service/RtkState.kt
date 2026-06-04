@@ -33,6 +33,13 @@ data class RtkStatus(
     val lastError: ErrorInfo = ErrorInfo(),
     val uptimeSec: Long = 0,
     val detail: String = "stopped",
+    // receiver (u-blox) parsed output
+    val rxLat: Double = Double.NaN,
+    val rxLon: Double = Double.NaN,
+    val rxSats: Int = 0,
+    val rxHdop: Double = Double.NaN,
+    val rxAltM: Double = Double.NaN,
+    val lastNmea: String = "",
 )
 
 /** Process-global bridge status. Written by [RtkService], read by the UI. */

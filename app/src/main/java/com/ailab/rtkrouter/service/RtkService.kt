@@ -43,9 +43,12 @@ class RtkService : LifecycleService() {
     private val sessionRx = AtomicLong(0)   // RTCM bytes from caster
     private val sessionTx = AtomicLong(0)   // GGA bytes to caster
     @Volatile private var lastRtcmAtMs = 0L
-    @Volatile private var lastRateBytes = 0L
     @Volatile private var startedAtMs = 0L
     @Volatile private var lastFixQuality = -1
+    @Volatile private var rxFix: Nmea.GgaFix? = null
+    @Volatile private var lastNmea = ""
+    // moving window of (timeMs, cumulativeRxBytes) for a smoothed RTCM rate.
+    private val rateWindow = ArrayDeque<Pair<Long, Long>>()
 
     @Volatile private var resolvedMount = ""
     @Volatile private var resolvedMode = ""
@@ -183,19 +186,36 @@ class RtkService : LifecycleService() {
     }
 
     private fun onSerialData(bytes: ByteArray) {
-        // Receiver typically streams NMEA; scan lines for GGA fix quality.
+        // Receiver streams NMEA; parse GGA lines for fix quality + position.
         val text = String(bytes, Charsets.US_ASCII)
         for (line in text.split('\n')) {
-            Nmea.parseGgaQuality(line)?.let { lastFixQuality = it }
+            val gga = Nmea.parseGga(line) ?: continue
+            lastFixQuality = gga.quality
+            rxFix = gga
+            lastNmea = line.trim()
         }
+    }
+
+    /** Smoothed RTCM rate (B/s) over the sample window. */
+    private fun windowedRate(): Long {
+        val w = rateWindow
+        if (w.size < 2) return 0
+        val (t0, b0) = w.first()
+        val (t1, b1) = w.last()
+        val dt = t1 - t0
+        return if (dt > 0) (b1 - b0) * 1000 / dt else 0
     }
 
     private suspend fun statusLoop() {
         while (lifecycleScope.isActive) {
             val now = System.currentTimeMillis()
             val rx = sessionRx.get()
-            val rate = ((rx - lastRateBytes) * 2)  // 500ms window -> per second
-            lastRateBytes = rx
+            // maintain a ~4s moving window for a smooth rate (VRS arrives in ~1Hz bursts).
+            rateWindow.addLast(now to rx)
+            while (rateWindow.size > 1 && now - rateWindow.first().first > RATE_WINDOW_MS) {
+                rateWindow.removeFirst()
+            }
+            val rate = windowedRate()
 
             // byte watchdog (DESIGN.md 3.3 failure #4): connected but no RTCM.
             if (ntripConnected && lastRtcmAtMs > 0 &&
@@ -229,6 +249,12 @@ class RtkService : LifecycleService() {
                     lastError = error,
                     uptimeSec = (now - startedAtMs) / 1000,
                     detail = detail,
+                    rxLat = rxFix?.lat ?: Double.NaN,
+                    rxLon = rxFix?.lon ?: Double.NaN,
+                    rxSats = rxFix?.satellites ?: 0,
+                    rxHdop = rxFix?.hdop ?: Double.NaN,
+                    rxAltM = rxFix?.altMeters ?: Double.NaN,
+                    lastNmea = lastNmea,
                 )
             )
             kotlinx.coroutines.delay(500)
@@ -266,6 +292,7 @@ class RtkService : LifecycleService() {
         const val EXTRA_CONFIG = "config"
         private const val TAG = "rtk"
         private const val NOTIF_ID = 42
+        private const val RATE_WINDOW_MS = 4000L
 
         private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val r = 6371.0

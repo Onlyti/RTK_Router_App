@@ -54,13 +54,42 @@ object Nmea {
     }
 
     /** GGA fix-quality field: 0 invalid, 1 GPS, 2 DGPS, 4 RTK fixed, 5 RTK float. */
-    fun parseGgaQuality(sentence: String): Int? {
+    fun parseGgaQuality(sentence: String): Int? = parseGga(sentence)?.quality
+
+    /** Parsed receiver GGA: position + fix indicators. */
+    data class GgaFix(
+        val quality: Int,
+        val lat: Double,
+        val lon: Double,
+        val satellites: Int,
+        val hdop: Double,
+        val altMeters: Double,
+    )
+
+    /** Full GGA parse. Accepts any talker (GP/GN/GL...). Null if not a GGA. */
+    fun parseGga(sentence: String): GgaFix? {
         val s = sentence.trim()
         if (!s.startsWith("\$") || s.length < 6) return null
-        val type = s.substring(1, 6)
-        if (!type.endsWith("GGA")) return null
-        val fields = s.substringBefore('*').split(',')
-        return fields.getOrNull(6)?.toIntOrNull()
+        if (!s.substring(1, 6).endsWith("GGA")) return null
+        val f = s.substringBefore('*').split(',')
+        val q = f.getOrNull(6)?.toIntOrNull() ?: return null
+        return GgaFix(
+            quality = q,
+            lat = dmToDeg(f.getOrNull(2), f.getOrNull(3)),
+            lon = dmToDeg(f.getOrNull(4), f.getOrNull(5)),
+            satellites = f.getOrNull(7)?.toIntOrNull() ?: 0,
+            hdop = f.getOrNull(8)?.toDoubleOrNull() ?: Double.NaN,
+            altMeters = f.getOrNull(9)?.toDoubleOrNull() ?: Double.NaN,
+        )
+    }
+
+    /** NMEA ddmm.mmmm + hemisphere -> signed decimal degrees. */
+    private fun dmToDeg(dm: String?, hemi: String?): Double {
+        val v = dm?.toDoubleOrNull() ?: return Double.NaN
+        val deg = floor(v / 100.0)
+        var dec = deg + (v - deg * 100.0) / 60.0
+        if (hemi == "S" || hemi == "W") dec = -dec
+        return dec
     }
 
     fun fixQualityLabel(q: Int): String = when (q) {

@@ -201,6 +201,13 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
             val fix = if (s.lastFixQuality >= 0)
                 com.ailab.rtkrouter.gnss.Nmea.fixQualityLabel(s.lastFixQuality) else "-"
             line("Fix", fix)
+
+            // Receiver (u-blox) parsed NMEA.
+            if (s.lastFixQuality >= 0) {
+                line("Rx pos", if (s.rxLat.isNaN()) "-" else String.format("%.7f, %.7f", s.rxLat, s.rxLon))
+                line("Rx sats / HDOP", "${s.rxSats} / ${if (s.rxHdop.isNaN()) "-" else String.format("%.1f", s.rxHdop)}")
+                line("Rx alt", if (s.rxAltM.isNaN()) "-" else String.format("%.1f m", s.rxAltM))
+            }
             if (showDataUsage) {
                 line("RTCM rate", "${s.rtcmBytesPerSec} B/s")
                 line("Rx (caster)", human(s.sessionRxBytes))
@@ -212,6 +219,13 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
                 line("Error", "[${s.lastError.failureMode}/${s.lastError.level}] ${s.lastError.reason}")
             }
             if (s.detail.isNotBlank()) line("Detail", s.detail)
+            if (s.lastNmea.isNotBlank()) {
+                Text(
+                    s.lastNmea,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
         }
     }
 }
