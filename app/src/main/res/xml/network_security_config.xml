@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Allow cleartext (ws:// / udp / plain tcp) to arbitrary local hosts.
+     Sensor streaming targets local LAN endpoints (rosbridge, foxglove, custom
+     receivers) that are typically not TLS-terminated. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

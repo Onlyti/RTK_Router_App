@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB VID/PID whitelist for auto-attach. Covers the common USB-serial bridge
+     chips plus u-blox native USB (ZED-F9P) and NovAtel. usb-serial-for-android
+     also probes by driver regardless, but this drives the OS attach dialog. -->
+<resources>
+    <!-- u-blox (ZED-F9P native USB CDC) -->
+    <usb-device vendor-id="5446" />        <!-- 0x1546 u-blox AG -->
+    <!-- FTDI -->
+    <usb-device vendor-id="1027" />        <!-- 0x0403 -->
+    <!-- Silicon Labs CP210x -->
+    <usb-device vendor-id="4292" />        <!-- 0x10C4 -->
+    <!-- WCH CH340/CH341 -->
+    <usb-device vendor-id="6790" />        <!-- 0x1A86 -->
+    <!-- Prolific PL2303 -->
+    <usb-device vendor-id="1659" />        <!-- 0x067B -->
+    <!-- NovAtel -->
+    <usb-device vendor-id="3727" />        <!-- 0x0E8F (varies by OEM7 board) -->
+    <!-- Generic CDC-ACM (Arduino etc.) -->
+    <usb-device vendor-id="9025" />        <!-- 0x2341 -->
+</resources>
