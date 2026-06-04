@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -68,7 +70,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
     val config: RtkConfig by vm.config.collectAsState()
@@ -115,9 +117,11 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Text("Baud", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (b in listOf(57600, 115200, 230400, 460800)) {
+        // Baud matters only for a UART-via-USB-serial adapter (native USB CDC ignores it).
+        // NovAtel COM default 9600; u-blox F9P UART1 default 38400.
+        Text("Baud (UART adapter only)", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (b in listOf(4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)) {
                 FilterChip(selected = config.baud == b, onClick = { vm.setBaud(b) }, label = { Text("$b") })
             }
         }
