@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter.config
+package com.onlyti.rtkrouter.config
 
 import kotlinx.serialization.Serializable
 
@@ -67,8 +67,6 @@ data class RtkConfig(
      *  parallel, forwarding only the healthiest (make-before-break). VRS ignores
      *  this (single virtual base already follows you). 1 = single base. */
     val hotStandbyCount: Int = 3,
-    /** Auto-set from the resolved mount's requiresGga; user can force on. */
-    val sendGga: Boolean = false,
     val validateRtcm3: Boolean = false,
     val autoReconnect: Boolean = true,
     val showDataUsage: Boolean = true,

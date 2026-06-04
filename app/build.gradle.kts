@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.ailab.rtkrouter"
+    namespace = "com.onlyti.rtkrouter"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.ailab.rtkrouter"
+        applicationId = "com.onlyti.rtkrouter"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

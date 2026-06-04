@@ -1,7 +1,7 @@
-package com.ailab.rtkrouter.ui
+package com.onlyti.rtkrouter.ui
 
 import android.content.Context
-import com.ailab.rtkrouter.config.RtkConfig
+import com.onlyti.rtkrouter.config.RtkConfig
 import kotlinx.serialization.json.Json
 
 /** Persists [RtkConfig] as a JSON blob in SharedPreferences (credentials stay on-device). */

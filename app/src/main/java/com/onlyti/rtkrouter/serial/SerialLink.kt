@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter.serial
+package com.onlyti.rtkrouter.serial
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -132,7 +132,7 @@ class SerialLink(
 
     companion object {
         private const val TAG = "rtk"
-        private const val ACTION_USB_PERMISSION = "com.ailab.rtkrouter.USB_PERMISSION"
+        private const val ACTION_USB_PERMISSION = "com.onlyti.rtkrouter.USB_PERMISSION"
         private const val WRITE_TIMEOUT_MS = 2000
     }
 }

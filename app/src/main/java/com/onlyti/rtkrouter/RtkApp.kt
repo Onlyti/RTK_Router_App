@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter
+package com.onlyti.rtkrouter
 
 import android.app.Application
 import android.app.NotificationChannel

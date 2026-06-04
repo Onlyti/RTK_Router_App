@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter.ui
+package com.onlyti.rtkrouter.ui
 
 import android.Manifest
 import android.os.Build
@@ -29,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -39,9 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.ailab.rtkrouter.config.EndpointMode
-import com.ailab.rtkrouter.config.RtkConfig
-import com.ailab.rtkrouter.service.RtkStatus
+import com.onlyti.rtkrouter.config.EndpointMode
+import com.onlyti.rtkrouter.config.RtkConfig
+import com.onlyti.rtkrouter.service.RtkStatus
 
 class MainActivity : ComponentActivity() {
     private val vm: RtkViewModel by viewModels()
@@ -161,16 +160,7 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
             }
         }
 
-        // VRS mounts require GGA upload; AUTO sets this automatically, MANUAL needs it forced.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Send GGA (VRS)", style = MaterialTheme.typography.labelLarge)
-            Switch(checked = config.sendGga, onCheckedChange = vm::setSendGga)
-        }
-
+        // GGA upload is auto-enabled when a VRS mount is detected (no manual toggle).
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onStart, enabled = !status.running) { Text("START") }
             Button(onClick = vm::stop, enabled = status.running) { Text("STOP") }
@@ -240,7 +230,7 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
                 }
             }
             val fix = if (s.lastFixQuality >= 0)
-                com.ailab.rtkrouter.gnss.Nmea.fixQualityLabel(s.lastFixQuality) else "-"
+                com.onlyti.rtkrouter.gnss.Nmea.fixQualityLabel(s.lastFixQuality) else "-"
             line("Fix", fix)
 
             // Receiver (u-blox) parsed NMEA.

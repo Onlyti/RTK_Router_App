@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter.gnss
+package com.onlyti.rtkrouter.gnss
 
 import android.Manifest
 import android.annotation.SuppressLint

@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter.gnss
+package com.onlyti.rtkrouter.gnss
 
 import java.util.Locale
 import kotlin.math.abs

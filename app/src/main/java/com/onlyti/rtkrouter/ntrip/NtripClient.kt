@@ -1,9 +1,9 @@
-package com.ailab.rtkrouter.ntrip
+package com.onlyti.rtkrouter.ntrip
 
 import android.util.Base64
 import android.util.Log
-import com.ailab.rtkrouter.config.CasterProfile
-import com.ailab.rtkrouter.config.NtripVersion
+import com.onlyti.rtkrouter.config.CasterProfile
+import com.onlyti.rtkrouter.config.NtripVersion
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
@@ -52,9 +52,9 @@ class NtripClient(
     private val mount: String,
     private val onRtcm: (ByteArray, Int) -> Unit,
     private val onState: (connected: Boolean, detail: String) -> Unit,
-    /** Returns the latest GGA sentence to upload, or null to skip. */
+    /** Returns the latest GGA sentence to upload, or null to skip (VRS auto-detect
+     *  gates this at the service level — uploader always runs, sends only when non-null). */
     private val ggaProvider: () -> String?,
-    private val sendGga: Boolean,
 ) {
     private val running = AtomicBoolean(false)
     @Volatile private var worker: Thread? = null
@@ -93,7 +93,7 @@ class NtripClient(
             }
             onState(true, "streaming /$mount")
 
-            if (sendGga) startGgaUploader(os)
+            startGgaUploader(os)   // always runs; ggaProvider returns null until GGA is active
 
             val buf = ByteArray(4096)
             while (running.get()) {

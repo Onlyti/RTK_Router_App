@@ -1,17 +1,17 @@
-package com.ailab.rtkrouter.ui
+package com.onlyti.rtkrouter.ui
 
 import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.ailab.rtkrouter.config.CasterProfile
-import com.ailab.rtkrouter.config.EndpointMode
-import com.ailab.rtkrouter.config.RtkConfig
-import com.ailab.rtkrouter.ntrip.NtripClient
-import com.ailab.rtkrouter.ntrip.StrEntry
-import com.ailab.rtkrouter.ntrip.rtcmFormatRank
-import com.ailab.rtkrouter.service.RtkService
-import com.ailab.rtkrouter.service.RtkState
+import com.onlyti.rtkrouter.config.CasterProfile
+import com.onlyti.rtkrouter.config.EndpointMode
+import com.onlyti.rtkrouter.config.RtkConfig
+import com.onlyti.rtkrouter.ntrip.NtripClient
+import com.onlyti.rtkrouter.ntrip.StrEntry
+import com.onlyti.rtkrouter.ntrip.rtcmFormatRank
+import com.onlyti.rtkrouter.service.RtkService
+import com.onlyti.rtkrouter.service.RtkState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,7 +49,6 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
     fun setSerialPortIndex(v: Int) = update { it.copy(serialPortIndex = v) }
     fun setHotStandbyCount(v: Int) = update { it.copy(hotStandbyCount = v) }
     fun setEndpointMode(m: EndpointMode) = update { it.copy(endpointMode = m) }
-    fun setSendGga(v: Boolean) = update { it.copy(sendGga = v) }
 
     // --- Sourcetable scan for manual mountpoint selection ---
     private val _scan = MutableStateFlow<ScanState>(ScanState.Idle)

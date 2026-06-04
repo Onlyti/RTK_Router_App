@@ -1,4 +1,4 @@
-package com.ailab.rtkrouter.service
+package com.onlyti.rtkrouter.service
 
 import android.app.Notification
 import android.app.PendingIntent
@@ -9,16 +9,16 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import com.ailab.rtkrouter.RtkApp
-import com.ailab.rtkrouter.config.EndpointMode
-import com.ailab.rtkrouter.config.RtkConfig
-import com.ailab.rtkrouter.gnss.LocationHub
-import com.ailab.rtkrouter.gnss.Nmea
-import com.ailab.rtkrouter.ntrip.NtripClient
-import com.ailab.rtkrouter.ntrip.StrEntry
-import com.ailab.rtkrouter.ntrip.rtcmFormatRank
-import com.ailab.rtkrouter.serial.SerialLink
-import com.ailab.rtkrouter.ui.MainActivity
+import com.onlyti.rtkrouter.RtkApp
+import com.onlyti.rtkrouter.config.EndpointMode
+import com.onlyti.rtkrouter.config.RtkConfig
+import com.onlyti.rtkrouter.gnss.LocationHub
+import com.onlyti.rtkrouter.gnss.Nmea
+import com.onlyti.rtkrouter.ntrip.NtripClient
+import com.onlyti.rtkrouter.ntrip.StrEntry
+import com.onlyti.rtkrouter.ntrip.rtcmFormatRank
+import com.onlyti.rtkrouter.serial.SerialLink
+import com.onlyti.rtkrouter.ui.MainActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -50,6 +50,7 @@ class RtkService : LifecycleService() {
     ) {
         @Volatile var client: NtripClient? = null
         @Volatile var connected = false
+        @Volatile var connectedAtMs = 0L
         @Volatile var lastDataMs = 0L
         @Volatile var nextRetryMs = 0L
         @Volatile var retryCount = 0
@@ -156,7 +157,7 @@ class RtkService : LifecycleService() {
             return
         }
         resolvedMode = mode
-        ggaActive = targets.any { it.requiresGga } || config.sendGga
+        ggaActive = targets.any { it.requiresGga }   // VRS from sourcetable; MANUAL auto-detects below
         resolvedMount = targets.first().mount
         Log.d(TAG, "resolved ${targets.size} stream(s) mode=$mode gga=$ggaActive: ${targets.joinToString { it.mount }}")
 
@@ -173,7 +174,8 @@ class RtkService : LifecycleService() {
         // MANUAL or explicit preferred mount wins -> single stream.
         if (config.endpointMode == EndpointMode.MANUAL || preferred.isNotBlank()) {
             val e = entries.firstOrNull { it.mount == preferred }
-            return listOf(Target(preferred, e?.requiresGga ?: config.sendGga, Double.NaN)) to "MANUAL"
+            // requiresGga unknown without sourcetable -> false; VRS auto-detect handles it.
+            return listOf(Target(preferred, e?.requiresGga ?: false, Double.NaN)) to "MANUAL"
         }
         if (entries.isEmpty()) return emptyList<Target>() to ""
 
@@ -211,11 +213,10 @@ class RtkService : LifecycleService() {
             onRtcm = { buf, n -> onStreamRtcm(s, buf, n) },
             onState = { connected, d ->
                 s.connected = connected
-                if (connected) s.retryCount = 0
+                if (connected) { s.retryCount = 0; s.connectedAtMs = System.currentTimeMillis() }
                 if (s.id == activeStreamId) detail = d
             },
             ggaProvider = { buildGga() },
-            sendGga = s.requiresGga || config.sendGga,
         ).also { it.start() }
     }
 
@@ -230,6 +231,7 @@ class RtkService : LifecycleService() {
     }
 
     private fun buildGga(): String? {
+        if (!ggaActive) return null
         val loc = location.lastLocation() ?: return null
         val secOfDay = ((System.currentTimeMillis() / 1000L) % 86400L).toDouble()
         val gga = Nmea.buildGga(loc.latitude, loc.longitude, if (loc.hasAltitude()) loc.altitude else 0.0, secOfDay)
@@ -294,6 +296,18 @@ class RtkService : LifecycleService() {
             }
         } else {
             resolvedMount = active.mount
+        }
+
+        // VRS auto-detect: a mount that connects but stays silent is almost certainly a
+        // VRS waiting for GGA. If we have a position, enable GGA — no toggle needed.
+        if (!ggaActive && location.lastLocation() != null) {
+            val a = streams.find { it.id == activeStreamId }
+            if (a != null && a.connected && a.connectedAtMs > 0 &&
+                a.rxBytes.get() == 0L && now - a.connectedAtMs > GGA_PROBE_MS
+            ) {
+                ggaActive = true
+                Log.d(TAG, "VRS auto-detected on ${a.mount}: enabling GGA upload")
+            }
         }
 
         ntripConnected = streams.any { it.connected }
@@ -397,13 +411,14 @@ class RtkService : LifecycleService() {
     }
 
     companion object {
-        const val ACTION_START = "com.ailab.rtkrouter.START"
-        const val ACTION_STOP = "com.ailab.rtkrouter.STOP"
+        const val ACTION_START = "com.onlyti.rtkrouter.START"
+        const val ACTION_STOP = "com.onlyti.rtkrouter.STOP"
         const val EXTRA_CONFIG = "config"
         private const val TAG = "rtk"
         private const val NOTIF_ID = 42
         private const val RATE_WINDOW_MS = 4000L
         private const val NMEA_BUF_CAP = 4096
+        private const val GGA_PROBE_MS = 6000L   // silent-stream window before assuming VRS
 
         private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val r = 6371.0
