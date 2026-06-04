@@ -141,7 +141,10 @@ class RtkService : LifecycleService() {
         if (entries.isEmpty()) return Triple("", false, "")
 
         if (config.endpointMode == EndpointMode.AUTO) {
-            val vrs = entries.firstOrNull { it.requiresGga }
+            // Prefer an RTCM3 VRS mount; F9P (and most u-blox/NovAtel) cannot use CMR/CMR+.
+            val vrsList = entries.filter { it.requiresGga }
+            val vrs = vrsList.firstOrNull { it.format.contains("RTCM 3") || it.format.contains("RTCM3") }
+                ?: vrsList.firstOrNull()
             if (vrs != null) return Triple(vrs.mount, true, "VRS")
         }
         // NEAREST (or AUTO with no VRS): pick closest fixed station by phone GPS.
