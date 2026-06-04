@@ -10,6 +10,7 @@ import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.onlyti.rtkrouter.RtkApp
+import com.onlyti.rtkrouter.config.CasterProfile
 import com.onlyti.rtkrouter.config.EndpointMode
 import com.onlyti.rtkrouter.config.RtkConfig
 import com.onlyti.rtkrouter.gnss.LocationHub
@@ -41,12 +42,14 @@ class RtkService : LifecycleService() {
 
     private var serial: SerialLink? = null
 
-    /** One hot-standby base stream. Only the active one is forwarded to serial. */
+    /** One hot-standby base stream (possibly on a different caster). Only the active
+     *  stream is forwarded to serial. Spans multiple networks for whole-network failover. */
     private class BaseStream(
         val id: Int,
+        val profile: CasterProfile,
         val mount: String,
-        val requiresGga: Boolean,
         val distanceKm: Double,   // from phone GPS to this fixed base; NaN for VRS/unknown
+        requiresGga: Boolean,
     ) {
         @Volatile var client: NtripClient? = null
         @Volatile var connected = false
@@ -54,6 +57,7 @@ class RtkService : LifecycleService() {
         @Volatile var lastDataMs = 0L
         @Volatile var nextRetryMs = 0L
         @Volatile var retryCount = 0
+        @Volatile var ggaActive = requiresGga   // VRS from sourcetable; MANUAL auto-detects
         val rxBytes = AtomicLong(0)
     }
 
@@ -79,6 +83,7 @@ class RtkService : LifecycleService() {
     @Volatile private var healthyCount = 0
     @Volatile private var streamsInfo = ""
     @Volatile private var failoverLevel = "L0"
+    @Volatile private var activeProfileName = ""
     @Volatile private var serialConnected = false
     @Volatile private var serialDeviceName = ""
     @Volatile private var serialPortCount = 0
@@ -127,68 +132,68 @@ class RtkService : LifecycleService() {
     }
 
     private suspend fun resolveAndConnectNtrip() {
-        val profile = config.activeProfile
-        Log.d(TAG, "resolve: host=${profile.host}:${profile.port} mode=${config.endpointMode} mount='${profile.preferredMount}'")
-        if (profile.host.isBlank()) {
-            error = ErrorInfo("Config", "L0", "caster host empty")
+        // Multi-network: resolve targets across ALL enabled profiles, by priority. Streams
+        // from different casters run in parallel (hot-standby) so a whole-network outage
+        // fails over to an already-warm stream on another network.
+        val profiles = config.profiles
+            .filter { it.enabled && it.host.isNotBlank() }
+            .sortedBy { it.priority }
+        if (profiles.isEmpty()) {
+            error = ErrorInfo("Config", "L0", "no enabled caster with host")
             return
         }
 
-        var entries: List<StrEntry> = emptyList()
-        if (config.endpointMode != EndpointMode.MANUAL) {
-            val res = NtripClient.fetchSourcetable(profile)
-            res.onSuccess {
-                entries = it
-                Log.d(TAG, "sourcetable: ${it.size} entries, vrs=${it.count { e -> e.requiresGga }}")
+        val all = ArrayList<StreamTarget>()
+        var lastMode = ""
+        for (profile in profiles) {
+            Log.d(TAG, "resolve ${profile.name} ${profile.host}:${profile.port} mode=${config.endpointMode}")
+            var entries: List<StrEntry> = emptyList()
+            if (config.endpointMode != EndpointMode.MANUAL) {
+                NtripClient.fetchSourcetable(profile)
+                    .onSuccess { entries = it; Log.d(TAG, "${profile.name}: ${it.size} mounts, vrs=${it.count { e -> e.requiresGga }}") }
+                    .onFailure {
+                        Log.w(TAG, "${profile.name} sourcetable failed: ${it.message}")
+                        if (profile.preferredMount.isBlank()) return@onFailure
+                    }
             }
-            res.onFailure {
-                Log.w(TAG, "sourcetable fetch failed: ${it.message}", it)
-                error = ErrorInfo("CasterDown", "L0", "sourcetable: ${it.message}")
-                // No explicit mount to fall back on -> stop and surface the real reason.
-                if (profile.preferredMount.isBlank()) return
-            }
+            val (targets, mode) = chooseTargets(profile, profile.preferredMount, entries)
+            if (mode.isNotEmpty()) lastMode = mode
+            all.addAll(targets)
         }
 
-        val (targets, mode) = chooseTargets(profile.preferredMount, entries)
-        if (targets.isEmpty()) {
-            val why = if (entries.isEmpty()) "sourcetable empty/failed" else "${entries.size} mounts, none selectable"
-            error = ErrorInfo("Config", "L0", "no mount: $why")
-            Log.w(TAG, "no mount resolved ($why)")
+        if (all.isEmpty()) {
+            error = ErrorInfo("Config", "L0", "no mount resolved on any caster")
+            Log.w(TAG, "no mount resolved across ${profiles.size} profile(s)")
             return
         }
-        resolvedMode = mode
-        ggaActive = targets.any { it.requiresGga }   // VRS from sourcetable; MANUAL auto-detects below
-        resolvedMount = targets.first().mount
-        Log.d(TAG, "resolved ${targets.size} stream(s) mode=$mode gga=$ggaActive: ${targets.joinToString { it.mount }}")
+        val capped = all.take(MAX_STREAMS)
+        resolvedMode = if (profiles.size > 1) "MULTI/$lastMode" else lastMode
+        resolvedMount = capped.first().mount
+        Log.d(TAG, "resolved ${capped.size} stream(s): ${capped.joinToString { "${it.profile.name}/${it.mount}" }}")
 
-        val list = targets.mapIndexed { i, t -> BaseStream(i, t.mount, t.requiresGga, t.distanceKm) }
+        val list = capped.mapIndexed { i, t -> BaseStream(i, t.profile, t.mount, t.distanceKm, t.requiresGga) }
         list.forEach { startStream(it) }
         streams = list
         activeStreamId = 0
     }
 
-    private class Target(val mount: String, val requiresGga: Boolean, val distanceKm: Double)
+    private class StreamTarget(val profile: CasterProfile, val mount: String, val requiresGga: Boolean, val distanceKm: Double)
 
-    /** VRS -> single; fixed -> top-N nearest (sorted, distance attached). */
-    private fun chooseTargets(preferred: String, entries: List<StrEntry>): Pair<List<Target>, String> {
-        // MANUAL or explicit preferred mount wins -> single stream.
+    /** Per-profile: VRS -> single; fixed -> top-N nearest (distance attached). */
+    private fun chooseTargets(profile: CasterProfile, preferred: String, entries: List<StrEntry>): Pair<List<StreamTarget>, String> {
         if (config.endpointMode == EndpointMode.MANUAL || preferred.isNotBlank()) {
             val e = entries.firstOrNull { it.mount == preferred }
-            // requiresGga unknown without sourcetable -> false; VRS auto-detect handles it.
-            return listOf(Target(preferred, e?.requiresGga ?: false, Double.NaN)) to "MANUAL"
+            return listOf(StreamTarget(profile, preferred, e?.requiresGga ?: false, Double.NaN)) to "MANUAL"
         }
-        if (entries.isEmpty()) return emptyList<Target>() to ""
+        if (entries.isEmpty()) return emptyList<StreamTarget>() to ""
 
         if (config.endpointMode == EndpointMode.AUTO) {
-            // VRS first: highest-ranked RTCM3 VRS. Single stream (virtual base follows you,
-            // so hot-standby is unnecessary).
             val vrsList = entries.filter { it.requiresGga }
             val vrs = vrsList.filter { rtcmFormatRank(it.format) >= 0 }
                 .maxByOrNull { rtcmFormatRank(it.format) }
                 ?: vrsList.firstOrNull()
-            if (vrs != null) return listOf(Target(vrs.mount, true, Double.NaN)) to "VRS"
+            if (vrs != null) return listOf(StreamTarget(profile, vrs.mount, true, Double.NaN)) to "VRS"
         }
-        // NEAREST (or AUTO with no VRS): top-N nearest fixed stations as hot-standby.
         val loc = location.lastLocation()
         val fixed = entries.filter {
             !it.requiresGga && rtcmFormatRank(it.format) >= 0 && !it.lat.isNaN() && !it.lon.isNaN()
@@ -196,11 +201,10 @@ class RtkService : LifecycleService() {
         val n = config.hotStandbyCount.coerceIn(1, 5)
         val picked = if (loc != null && fixed.isNotEmpty()) {
             fixed.map { it to haversineKm(loc.latitude, loc.longitude, it.lat, it.lon) }
-                .sortedBy { it.second }
-                .take(n)
-                .map { Target(it.first.mount, it.first.requiresGga, it.second) }
+                .sortedBy { it.second }.take(n)
+                .map { StreamTarget(profile, it.first.mount, it.first.requiresGga, it.second) }
         } else {
-            entries.take(n).map { Target(it.mount, it.requiresGga, Double.NaN) }
+            entries.take(n).map { StreamTarget(profile, it.mount, it.requiresGga, Double.NaN) }
         }
         return picked to "NEAREST"
     }
@@ -208,7 +212,7 @@ class RtkService : LifecycleService() {
     private fun startStream(s: BaseStream) {
         s.client?.stop()
         s.client = NtripClient(
-            profile = config.activeProfile,
+            profile = s.profile,                          // each stream on its own caster
             mount = s.mount,
             onRtcm = { buf, n -> onStreamRtcm(s, buf, n) },
             onState = { connected, d ->
@@ -216,7 +220,7 @@ class RtkService : LifecycleService() {
                 if (connected) { s.retryCount = 0; s.connectedAtMs = System.currentTimeMillis() }
                 if (s.id == activeStreamId) detail = d
             },
-            ggaProvider = { buildGga() },
+            ggaProvider = { if (s.ggaActive) buildGga() else null },
         ).also { it.start() }
     }
 
@@ -231,7 +235,6 @@ class RtkService : LifecycleService() {
     }
 
     private fun buildGga(): String? {
-        if (!ggaActive) return null
         val loc = location.lastLocation() ?: return null
         val secOfDay = ((System.currentTimeMillis() / 1000L) % 86400L).toDouble()
         val gga = Nmea.buildGga(loc.latitude, loc.longitude, if (loc.hasAltitude()) loc.altitude else 0.0, secOfDay)
@@ -298,26 +301,35 @@ class RtkService : LifecycleService() {
             resolvedMount = active.mount
         }
 
-        // VRS auto-detect: a mount that connects but stays silent is almost certainly a
-        // VRS waiting for GGA. If we have a position, enable GGA — no toggle needed.
-        if (!ggaActive && location.lastLocation() != null) {
-            val a = streams.find { it.id == activeStreamId }
-            if (a != null && a.connected && a.connectedAtMs > 0 &&
-                a.rxBytes.get() == 0L && now - a.connectedAtMs > GGA_PROBE_MS
-            ) {
-                ggaActive = true
-                Log.d(TAG, "VRS auto-detected on ${a.mount}: enabling GGA upload")
+        // VRS auto-detect, per stream: a mount that connects but stays silent is almost
+        // certainly a VRS waiting for GGA. If we have a position, enable GGA — no toggle.
+        if (location.lastLocation() != null) {
+            for (s in streams) {
+                if (!s.ggaActive && s.connected && s.connectedAtMs > 0 &&
+                    s.rxBytes.get() == 0L && now - s.connectedAtMs > GGA_PROBE_MS
+                ) {
+                    s.ggaActive = true
+                    Log.d(TAG, "VRS auto-detected on ${s.profile.name}/${s.mount}: enabling GGA")
+                }
             }
         }
 
+        val act = streams.find { it.id == activeStreamId }
         ntripConnected = streams.any { it.connected }
         healthyCount = streams.count { healthy(it) }
-        failoverLevel = if (activeStreamId <= 0) "L0" else "L1"   // L1 = running on a backup base
+        ggaActive = act?.ggaActive ?: false
+        activeProfileName = act?.profile?.name ?: ""
+        // L0 = primary, L1 = backup base same net, L2 = on a different (backup) network.
+        failoverLevel = when {
+            act == null || activeStreamId <= 0 -> "L0"
+            streams.firstOrNull()?.profile?.name != act.profile.name -> "L2"
+            else -> "L1"
+        }
         streamsInfo = streams.joinToString(" | ") { s ->
             val star = if (s.id == activeStreamId) "*" else ""
             val dist = if (s.distanceKm.isNaN()) "" else String.format(Locale.US, " %.1fkm", s.distanceKm)
             val st = if (healthy(s)) "ok" else if (s.connected) "stale" else "down"
-            "$star${s.mount}$dist $st"
+            "$star${s.profile.name}/${s.mount}$dist $st"
         }
         if (healthyCount == 0 && now - startedAtMs > 5000) {
             error = ErrorInfo("NoRtcmData", failoverLevel, "no healthy base stream")
@@ -355,7 +367,7 @@ class RtkService : LifecycleService() {
                     deviceName = serialDeviceName,
                     serialPortCount = serialPortCount,
                     serialPortIndex = config.serialPortIndex,
-                    activeProfileName = config.activeProfile.name,
+                    activeProfileName = activeProfileName,
                     activeMount = resolvedMount,
                     activeMode = resolvedMode,
                     ggaActive = ggaActive,
@@ -419,6 +431,7 @@ class RtkService : LifecycleService() {
         private const val RATE_WINDOW_MS = 4000L
         private const val NMEA_BUF_CAP = 4096
         private const val GGA_PROBE_MS = 6000L   // silent-stream window before assuming VRS
+        private const val MAX_STREAMS = 6        // cap across all networks
 
         private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val r = 6371.0

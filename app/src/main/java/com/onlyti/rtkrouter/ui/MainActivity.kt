@@ -23,21 +23,29 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.onlyti.rtkrouter.config.CasterPresets
 import com.onlyti.rtkrouter.config.EndpointMode
 import com.onlyti.rtkrouter.config.RtkConfig
 import com.onlyti.rtkrouter.service.RtkStatus
@@ -74,7 +82,6 @@ class MainActivity : ComponentActivity() {
 private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
     val config: RtkConfig by vm.config.collectAsState()
     val status: RtkStatus by vm.status.collectAsState()
-    val profile = config.activeProfile
 
     Column(
         modifier = Modifier
@@ -85,36 +92,7 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
     ) {
         Text("RTK Router", style = MaterialTheme.typography.headlineSmall)
 
-        OutlinedTextField(
-            value = profile.host, onValueChange = vm::setHost,
-            label = { Text("Caster host") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = profile.port.toString(), onValueChange = vm::setPort,
-                label = { Text("Port") }, singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedTextField(
-                value = profile.preferredMount, onValueChange = vm::setMount,
-                label = { Text("Mount (blank=AUTO)") }, singleLine = true,
-                modifier = Modifier.weight(2f),
-            )
-        }
-
-        ScanSection(vm)
-        OutlinedTextField(
-            value = profile.user, onValueChange = vm::setUser,
-            label = { Text("User") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = profile.pass, onValueChange = vm::setPass,
-            label = { Text("Password") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        ProfilesSection(vm, config)
 
         // Baud matters only for a UART-via-USB-serial adapter (native USB CDC ignores it).
         // NovAtel COM default 9600; u-blox F9P UART1 default 38400.
@@ -167,6 +145,84 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
         }
 
         StatusCard(status, showDataUsage = config.showDataUsage)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ProfilesSection(vm: RtkViewModel, config: RtkConfig) {
+    Text("Casters (multi-network hot-standby)", style = MaterialTheme.typography.titleMedium)
+
+    // Preset quick-add combobox (per country).
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = "+ add preset caster", onValueChange = {}, readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            label = { Text("presets") },
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            for (p in CasterPresets.ALL) {
+                DropdownMenuItem(
+                    text = { Text("[${p.country}] ${p.name}  ·  ${p.host}:${p.port}") },
+                    onClick = { vm.addPreset(p); expanded = false },
+                )
+            }
+            DropdownMenuItem(text = { Text("+ empty caster") }, onClick = { vm.addProfile(); expanded = false })
+        }
+    }
+
+    config.profiles.forEachIndexed { i, p ->
+        val isActive = i == config.activeIndex
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(
+                        selected = isActive,
+                        onClick = { vm.setActiveIndex(i) },
+                        label = { Text(if (isActive) "scan target" else "set scan") },
+                    )
+                    Text(
+                        "  ${p.name}",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("use", style = MaterialTheme.typography.bodySmall)
+                    Switch(checked = p.enabled, onCheckedChange = { vm.setEnabled(i, it) })
+                    if (config.profiles.size > 1) {
+                        TextButton(onClick = { vm.removeProfile(i) }) { Text("✕") }
+                    }
+                }
+                OutlinedTextField(
+                    value = p.host, onValueChange = { vm.setHost(i, it) },
+                    label = { Text("host") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = p.port.toString(), onValueChange = { vm.setPort(i, it) },
+                        label = { Text("port") }, singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = p.preferredMount, onValueChange = { vm.setMount(i, it) },
+                        label = { Text("mount (blank=AUTO)") }, singleLine = true, modifier = Modifier.weight(2f),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = p.user, onValueChange = { vm.setUser(i, it) },
+                        label = { Text("user") }, singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = p.pass, onValueChange = { vm.setPass(i, it) },
+                        label = { Text("pass") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (isActive) ScanSection(vm)
+            }
+        }
     }
 }
 

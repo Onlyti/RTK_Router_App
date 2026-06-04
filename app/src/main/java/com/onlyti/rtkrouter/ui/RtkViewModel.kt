@@ -33,18 +33,36 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
         prefs.save(next)
     }
 
-    private fun updateProfile(transform: (CasterProfile) -> CasterProfile) = update { cfg ->
+    // --- multi-profile (multi-network) management ---
+    private fun updateProfileAt(i: Int, transform: (CasterProfile) -> CasterProfile) = update { cfg ->
         val list = cfg.profiles.toMutableList()
-        if (list.isEmpty()) list.add(CasterProfile())
-        list[cfg.activeIndex] = transform(list[cfg.activeIndex])
+        if (i in list.indices) list[i] = transform(list[i])
         cfg.copy(profiles = list)
     }
 
-    fun setHost(v: String) = updateProfile { it.copy(host = v.trim()) }
-    fun setPort(v: String) = updateProfile { it.copy(port = v.trim().toIntOrNull() ?: it.port) }
-    fun setUser(v: String) = updateProfile { it.copy(user = v) }
-    fun setPass(v: String) = updateProfile { it.copy(pass = v) }
-    fun setMount(v: String) = updateProfile { it.copy(preferredMount = v.trim()) }
+    fun setHost(i: Int, v: String) = updateProfileAt(i) { it.copy(host = v.trim()) }
+    fun setPort(i: Int, v: String) = updateProfileAt(i) { it.copy(port = v.trim().toIntOrNull() ?: it.port) }
+    fun setUser(i: Int, v: String) = updateProfileAt(i) { it.copy(user = v) }
+    fun setPass(i: Int, v: String) = updateProfileAt(i) { it.copy(pass = v) }
+    fun setMount(i: Int, v: String) = updateProfileAt(i) { it.copy(preferredMount = v.trim()) }
+    fun setEnabled(i: Int, v: Boolean) = updateProfileAt(i) { it.copy(enabled = v) }
+    fun setActiveIndex(i: Int) = update { it.copy(activeIndex = i.coerceIn(0, (it.profiles.size - 1).coerceAtLeast(0))) }
+
+    fun addProfile(host: String = "", port: Int = 2101, name: String = "caster") = update { cfg ->
+        val list = cfg.profiles.toMutableList()
+        list.add(CasterProfile(name = name, host = host, port = port, priority = list.size))
+        cfg.copy(profiles = list, activeIndex = list.size - 1)
+    }
+
+    fun addPreset(preset: com.onlyti.rtkrouter.config.CasterPreset) =
+        addProfile(host = preset.host, port = preset.port, name = preset.name)
+
+    fun removeProfile(i: Int) = update { cfg ->
+        if (cfg.profiles.size <= 1) return@update cfg     // keep at least one
+        val list = cfg.profiles.toMutableList().also { it.removeAt(i) }
+        cfg.copy(profiles = list, activeIndex = cfg.activeIndex.coerceIn(0, list.size - 1))
+    }
+
     fun setBaud(v: Int) = update { it.copy(baud = v) }
     fun setSerialPortIndex(v: Int) = update { it.copy(serialPortIndex = v) }
     fun setHotStandbyCount(v: Int) = update { it.copy(hotStandbyCount = v) }
@@ -77,9 +95,9 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearScan() { _scan.value = ScanState.Idle }
 
-    /** Pick a mountpoint from the scan: fill the field and switch to MANUAL. */
+    /** Pick a mountpoint from the scan: fill the active profile's mount, switch to MANUAL. */
     fun pickMount(mount: String) {
-        setMount(mount)
+        setMount(_config.value.activeIndex, mount)
         setEndpointMode(EndpointMode.MANUAL)
         _scan.value = ScanState.Idle
     }

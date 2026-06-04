@@ -30,6 +30,8 @@ data class CasterProfile(
     val priority: Int = 0,
     /** host/port preset; user only supplies credentials (DESIGN.md 3.4). */
     val preset: Boolean = false,
+    /** Participates in multi-network hot-standby. Disabled profiles are kept but unused. */
+    val enabled: Boolean = true,
 )
 
 /** A mountpoint resolved from the sourcetable or an embedded fallback table. */
