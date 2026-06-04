@@ -13,14 +13,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -97,6 +101,8 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
                 modifier = Modifier.weight(2f),
             )
         }
+
+        ScanSection(vm)
         OutlinedTextField(
             value = profile.user, onValueChange = vm::setUser,
             label = { Text("User") }, singleLine = true,
@@ -143,6 +149,42 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
         }
 
         StatusCard(status, showDataUsage = config.showDataUsage)
+    }
+}
+
+@Composable
+private fun ScanSection(vm: RtkViewModel) {
+    val scan by vm.scan.collectAsState()
+    OutlinedButton(onClick = vm::scanEndpoints) { Text("SCAN endpoints") }
+    when (val s = scan) {
+        is ScanState.Idle -> {}
+        is ScanState.Scanning -> Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
+            Text("scanning sourcetable...")
+        }
+        is ScanState.Error -> Text(
+            "scan failed: ${s.msg}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        is ScanState.Done -> Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text("${s.entries.size} mountpoints (tap to select)", style = MaterialTheme.typography.labelMedium)
+                Column(modifier = Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                    for (e in s.entries) {
+                        val tag = if (e.requiresGga) "VRS" else "FIX"
+                        Text(
+                            "${e.mount}   ·   ${e.format}   ·   $tag",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { vm.pickMount(e.mount) }
+                                .padding(vertical = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

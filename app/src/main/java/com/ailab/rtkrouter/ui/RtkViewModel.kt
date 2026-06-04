@@ -3,13 +3,18 @@ package com.ailab.rtkrouter.ui
 import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.ailab.rtkrouter.config.CasterProfile
 import com.ailab.rtkrouter.config.EndpointMode
 import com.ailab.rtkrouter.config.RtkConfig
+import com.ailab.rtkrouter.ntrip.NtripClient
+import com.ailab.rtkrouter.ntrip.StrEntry
 import com.ailab.rtkrouter.service.RtkService
 import com.ailab.rtkrouter.service.RtkState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 class RtkViewModel(app: Application) : AndroidViewModel(app) {
@@ -43,6 +48,41 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
     fun setEndpointMode(m: EndpointMode) = update { it.copy(endpointMode = m) }
     fun setSendGga(v: Boolean) = update { it.copy(sendGga = v) }
 
+    // --- Sourcetable scan for manual mountpoint selection ---
+    private val _scan = MutableStateFlow<ScanState>(ScanState.Idle)
+    val scan: StateFlow<ScanState> = _scan
+
+    fun scanEndpoints() {
+        val profile = _config.value.activeProfile
+        if (profile.host.isBlank()) {
+            _scan.value = ScanState.Error("caster host empty")
+            return
+        }
+        _scan.value = ScanState.Scanning
+        viewModelScope.launch(Dispatchers.IO) {
+            _scan.value = NtripClient.fetchSourcetable(profile).fold(
+                onSuccess = { list ->
+                    // RTCM3 first (F9P-usable), then by mount name.
+                    val sorted = list.sortedWith(
+                        compareByDescending<StrEntry> { it.format.contains("RTCM 3") || it.format.contains("RTCM3") }
+                            .thenBy { it.mount },
+                    )
+                    ScanState.Done(sorted)
+                },
+                onFailure = { ScanState.Error(it.message ?: "scan failed") },
+            )
+        }
+    }
+
+    fun clearScan() { _scan.value = ScanState.Idle }
+
+    /** Pick a mountpoint from the scan: fill the field and switch to MANUAL. */
+    fun pickMount(mount: String) {
+        setMount(mount)
+        setEndpointMode(EndpointMode.MANUAL)
+        _scan.value = ScanState.Idle
+    }
+
     fun start() {
         val app = getApplication<Application>()
         val intent = Intent(app, RtkService::class.java).apply {
@@ -56,4 +96,12 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         app.startService(Intent(app, RtkService::class.java).apply { action = RtkService.ACTION_STOP })
     }
+}
+
+/** UI state for the sourcetable scan. */
+sealed interface ScanState {
+    data object Idle : ScanState
+    data object Scanning : ScanState
+    data class Done(val entries: List<StrEntry>) : ScanState
+    data class Error(val msg: String) : ScanState
 }
