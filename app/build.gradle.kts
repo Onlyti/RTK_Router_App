@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,7 +22,7 @@ android {
     }
 
     // Release signing from env (CI secrets) or keystore.properties (local). Both gitignored.
-    val ksProps = java.util.Properties().apply {
+    val ksProps = Properties().apply {
         val f = rootProject.file("keystore.properties")
         if (f.exists()) f.inputStream().use { load(it) }
     }
@@ -30,7 +32,7 @@ android {
     signingConfigs {
         if (hasReleaseKey) {
             create("release") {
-                storeFile = file(cfg("RELEASE_STORE_FILE")!!)
+                storeFile = rootProject.file(cfg("RELEASE_STORE_FILE")!!)
                 storePassword = cfg("RELEASE_STORE_PASSWORD")
                 keyAlias = cfg("RELEASE_KEY_ALIAS")
                 keyPassword = cfg("RELEASE_KEY_PASSWORD")
