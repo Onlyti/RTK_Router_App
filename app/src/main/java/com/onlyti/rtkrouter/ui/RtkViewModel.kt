@@ -115,6 +115,11 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         app.startService(Intent(app, RtkService::class.java).apply { action = RtkService.ACTION_STOP })
     }
+
+    fun resetUsage() {
+        val app = getApplication<Application>()
+        app.startService(Intent(app, RtkService::class.java).apply { action = RtkService.ACTION_RESET_USAGE })
+    }
 }
 
 /** UI state for the sourcetable scan. */

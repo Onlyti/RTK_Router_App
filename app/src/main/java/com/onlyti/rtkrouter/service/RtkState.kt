@@ -26,7 +26,7 @@ data class RtkStatus(
     val failoverLevel: String = "L0",
     val streamCount: Int = 0,        // hot-standby streams open
     val healthyCount: Int = 0,       // of which currently healthy
-    val streamsInfo: String = "",    // per-stream summary for UI
+    val streamLines: List<String> = emptyList(),  // one summary line per stream
     // data usage
     val rtcmBytesPerSec: Long = 0,
     val sessionRxBytes: Long = 0,    // RTCM received from caster

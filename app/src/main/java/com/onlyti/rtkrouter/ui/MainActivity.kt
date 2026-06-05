@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -45,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -114,18 +116,6 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
             }
         }
 
-        // USB port index — NovAtel OEM7 exposes multiple CDC ports; F9P uses 0.
-        Text("USB port (NovAtel multi-port)", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (idx in 0..2) {
-                FilterChip(
-                    selected = config.serialPortIndex == idx,
-                    onClick = { vm.setSerialPortIndex(idx) },
-                    label = { Text("$idx") },
-                )
-            }
-        }
-
         Text("Endpoint mode", style = MaterialTheme.typography.labelLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (m in EndpointMode.entries) {
@@ -155,7 +145,7 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
             Button(onClick = vm::stop, enabled = status.running) { Text("STOP") }
         }
 
-        StatusCard(status, showDataUsage = config.showDataUsage)
+        StatusCard(status, showDataUsage = config.showDataUsage, onResetUsage = vm::resetUsage)
 
         Text("Trajectory (last ~1 min)", style = MaterialTheme.typography.labelLarge)
         TrajectoryMap(status.trajectory)
@@ -298,7 +288,8 @@ private fun TrajectoryMap(points: List<GeoPt>) {
     }
     AndroidView(
         factory = { mapView },
-        modifier = Modifier.fillMaxWidth().height(260.dp),
+        // clipToBounds so the native MapView never overdraws into the status card above.
+        modifier = Modifier.fillMaxWidth().height(240.dp).clipToBounds(),
         update = { map ->
             map.overlays.clear()
             if (points.isNotEmpty()) {
@@ -313,26 +304,19 @@ private fun TrajectoryMap(points: List<GeoPt>) {
 }
 
 @Composable
-private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
+private fun StatusCard(s: RtkStatus, showDataUsage: Boolean, onResetUsage: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Status", style = MaterialTheme.typography.titleMedium)
             line("NTRIP", if (s.ntripConnected) "connected" else "down")
-            line(
-                "Serial",
-                if (s.serialConnected) "${s.deviceName} (port ${s.serialPortIndex}/${s.serialPortCount})" else "down",
-            )
+            line("Serial", if (s.serialConnected) s.deviceName else "down")
             line("Provider/Mount", "${s.activeProfileName} / ${s.activeMount.ifBlank { "-" }}")
             line("Mode / GGA", "${s.activeMode.ifBlank { "-" }} / ${if (s.ggaActive) "on" else "off"}")
             line("Failover", s.failoverLevel)
             if (s.streamCount > 0) {
                 line("Bases", "${s.healthyCount}/${s.streamCount} healthy")
-                if (s.streamsInfo.isNotBlank()) {
-                    Text(
-                        s.streamsInfo,   // *active, distance km, ok/stale/down
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
+                for (l in s.streamLines) {     // one line per base: ▶active, distance km, ok/stale/down
+                    Text(l, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                 }
             }
             val fix = if (s.lastFixQuality >= 0)
@@ -346,6 +330,12 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean) {
                 line("Rx alt", if (s.rxAltM.isNaN()) "-" else String.format("%.1f m", s.rxAltM))
             }
             if (showDataUsage) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Data usage", style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = onResetUsage, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                        Text("reset", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 line("RTCM rate", "${s.rtcmBytesPerSec} B/s")
                 line("Rx (caster)", human(s.sessionRxBytes))
                 line("Tx GGA (caster)", human(s.sessionTxBytes))

@@ -83,7 +83,7 @@ class RtkService : LifecycleService() {
     @Volatile private var ggaActive = false
     @Volatile private var ntripConnected = false
     @Volatile private var healthyCount = 0
-    @Volatile private var streamsInfo = ""
+    @Volatile private var streamLines: List<String> = emptyList()
     @Volatile private var failoverLevel = "L0"
     @Volatile private var activeProfileName = ""
     @Volatile private var serialConnected = false
@@ -103,6 +103,11 @@ class RtkService : LifecycleService() {
                 startBridge()
             }
             ACTION_STOP -> stopSelf()
+            ACTION_RESET_USAGE -> {
+                sessionRx.set(0); sessionTx.set(0)
+                serial?.txBytes?.set(0); serial?.rxBytes?.set(0)
+                rateWindow.clear()
+            }
         }
         return START_NOT_STICKY
     }
@@ -206,7 +211,11 @@ class RtkService : LifecycleService() {
                 .sortedBy { it.second }.take(n)
                 .map { StreamTarget(profile, it.first.mount, it.first.requiresGga, it.second) }
         } else {
-            entries.take(n).map { StreamTarget(profile, it.mount, it.requiresGga, Double.NaN) }
+            // No usable fixed stations (e.g. VRS-only caster) -> best RTCM3 mounts, NEVER CMR/CMR+.
+            entries.filter { rtcmFormatRank(it.format) >= 0 }
+                .sortedByDescending { rtcmFormatRank(it.format) }
+                .take(n)
+                .map { StreamTarget(profile, it.mount, it.requiresGga, Double.NaN) }
         }
         return picked to "NEAREST"
     }
@@ -342,11 +351,11 @@ class RtkService : LifecycleService() {
             streams.firstOrNull()?.profile?.name != act.profile.name -> "L2"
             else -> "L1"
         }
-        streamsInfo = streams.joinToString(" | ") { s ->
-            val star = if (s.id == activeStreamId) "*" else ""
-            val dist = if (s.distanceKm.isNaN()) "" else String.format(Locale.US, " %.1fkm", s.distanceKm)
+        streamLines = streams.map { s ->
+            val star = if (s.id == activeStreamId) "▶ " else "   "
+            val dist = if (s.distanceKm.isNaN()) "" else String.format(Locale.US, "  %.1f km", s.distanceKm)
             val st = if (healthy(s)) "ok" else if (s.connected) "stale" else "down"
-            "$star${s.profile.name}/${s.mount}$dist $st"
+            "$star${s.profile.name}/${s.mount}$dist  ·  $st"
         }
         if (healthyCount == 0 && now - startedAtMs > 5000) {
             error = ErrorInfo("NoRtcmData", failoverLevel, "no healthy base stream")
@@ -398,7 +407,7 @@ class RtkService : LifecycleService() {
                     failoverLevel = failoverLevel,
                     streamCount = streams.size,
                     healthyCount = healthyCount,
-                    streamsInfo = streamsInfo,
+                    streamLines = streamLines,
                     rtcmBytesPerSec = if (rate < 0) 0 else rate,
                     sessionRxBytes = rx,
                     sessionTxBytes = sessionTx.get(),
@@ -450,6 +459,7 @@ class RtkService : LifecycleService() {
     companion object {
         const val ACTION_START = "com.onlyti.rtkrouter.START"
         const val ACTION_STOP = "com.onlyti.rtkrouter.STOP"
+        const val ACTION_RESET_USAGE = "com.onlyti.rtkrouter.RESET_USAGE"
         const val EXTRA_CONFIG = "config"
         private const val TAG = "rtk"
         private const val NOTIF_ID = 42
