@@ -49,7 +49,7 @@ We may update this policy; the "Last updated" date will change accordingly.
 
 ## Contact
 
-rhdusal22@gmail.com
+pauljiwon96@gmail.com
 
 ---
 
@@ -80,4 +80,4 @@ GNSS 수신기에 전달하는 Android 유틸리티입니다. 개발자는 별�
 인터넷/네트워크 상태(caster 접속), USB host(수신기 통신), foreground service+알림(스트림 유지·상태).
 
 ## 문의
-rhdusal22@gmail.com
+pauljiwon96@gmail.com
