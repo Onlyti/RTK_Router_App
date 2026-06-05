@@ -46,7 +46,7 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
     fun setPass(i: Int, v: String) = updateProfileAt(i) { it.copy(pass = v) }
     fun setMount(i: Int, v: String) = updateProfileAt(i) { it.copy(preferredMount = v.trim()) }
     fun setEnabled(i: Int, v: Boolean) = updateProfileAt(i) { it.copy(enabled = v) }
-    fun setActiveIndex(i: Int) = update { it.copy(activeIndex = i.coerceIn(0, (it.profiles.size - 1).coerceAtLeast(0))) }
+    fun setActiveIndex(i: Int) = update { it.copy(activeIndex = i.coerceIn(-1, it.profiles.size - 1)) }
 
     fun addProfile(host: String = "", port: Int = 2101, name: String = "caster") = update { cfg ->
         val list = cfg.profiles.toMutableList()

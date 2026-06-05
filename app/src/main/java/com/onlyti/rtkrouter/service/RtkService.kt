@@ -75,6 +75,8 @@ class RtkService : LifecycleService() {
     @Volatile private var lastNmea = ""
     // moving window of (timeMs, cumulativeRxBytes) for a smoothed RTCM rate.
     private val rateWindow = ArrayDeque<Pair<Long, Long>>()
+    // rolling receiver track (timeMs, GeoPt) for the ~1-minute map overlay.
+    private val track = ArrayDeque<Pair<Long, GeoPt>>()
 
     @Volatile private var resolvedMount = ""
     @Volatile private var resolvedMode = ""
@@ -220,8 +222,23 @@ class RtkService : LifecycleService() {
                 if (connected) { s.retryCount = 0; s.connectedAtMs = System.currentTimeMillis() }
                 if (s.id == activeStreamId) detail = d
             },
-            ggaProvider = { if (s.ggaActive) buildGga() else null },
+            ggaProvider = { if (s.ggaActive) ggaForUpload() else null },
         ).also { it.start() }
+    }
+
+    /**
+     * GGA to upload to the caster (VRS). Prefer the receiver's OWN GGA (authoritative
+     * position, cm-accurate once RTK) read from serial; fall back to phone GPS only until
+     * the receiver has a fix. This is what lets us later drop the phone location permission.
+     */
+    private fun ggaForUpload(): String? {
+        val raw = lastNmea
+        if (lastFixQuality >= 1 && raw.startsWith("\$")) {
+            val gga = if (raw.endsWith("\r\n")) raw else "$raw\r\n"
+            sessionTx.addAndGet(gga.length.toLong())
+            return gga
+        }
+        return buildGga()   // fallback: phone GPS seed before receiver has a fix
     }
 
     private fun onStreamRtcm(s: BaseStream, buf: ByteArray, n: Int) {
@@ -357,6 +374,13 @@ class RtkService : LifecycleService() {
             }
             val rate = windowedRate()
 
+            // collect receiver track for the map (valid fix only), keep ~last minute.
+            val rf = rxFix
+            if (rf != null && !rf.lat.isNaN() && !rf.lon.isNaN() && rf.quality >= 1) {
+                track.addLast(now to GeoPt(rf.lat, rf.lon))
+                while (track.isNotEmpty() && now - track.first().first > TRACK_WINDOW_MS) track.removeFirst()
+            }
+
             superviseStreams(now)
 
             RtkState.update(
@@ -390,6 +414,7 @@ class RtkService : LifecycleService() {
                     rxHdop = rxFix?.hdop ?: Double.NaN,
                     rxAltM = rxFix?.altMeters ?: Double.NaN,
                     lastNmea = lastNmea,
+                    trajectory = track.map { it.second },
                 )
             )
             kotlinx.coroutines.delay(500)
@@ -432,6 +457,7 @@ class RtkService : LifecycleService() {
         private const val NMEA_BUF_CAP = 4096
         private const val GGA_PROBE_MS = 6000L   // silent-stream window before assuming VRS
         private const val MAX_STREAMS = 6        // cap across all networks
+        private const val TRACK_WINDOW_MS = 60_000L  // trajectory overlay window (~1 min)
 
         private fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val r = 6371.0

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +26,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
@@ -36,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,12 +46,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.onlyti.rtkrouter.config.CasterPresets
 import com.onlyti.rtkrouter.config.EndpointMode
 import com.onlyti.rtkrouter.config.RtkConfig
+import com.onlyti.rtkrouter.service.GeoPt
 import com.onlyti.rtkrouter.service.RtkStatus
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 
 class MainActivity : ComponentActivity() {
     private val vm: RtkViewModel by viewModels()
@@ -145,6 +157,9 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
         }
 
         StatusCard(status, showDataUsage = config.showDataUsage)
+
+        Text("Trajectory (last ~1 min)", style = MaterialTheme.typography.labelLarge)
+        TrajectoryMap(status.trajectory)
     }
 }
 
@@ -173,54 +188,59 @@ private fun ProfilesSection(vm: RtkViewModel, config: RtkConfig) {
         }
     }
 
+    // Compact: collapsed one-liner per caster; the selected one expands for editing.
     config.profiles.forEachIndexed { i, p ->
         val isActive = i == config.activeIndex
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
                         selected = isActive,
-                        onClick = { vm.setActiveIndex(i) },
-                        label = { Text(if (isActive) "scan target" else "set scan") },
+                        onClick = { vm.setActiveIndex(if (isActive) -1 else i) },
+                        label = { Text(if (isActive) "▼" else "▶") },
                     )
                     Text(
-                        "  ${p.name}",
-                        style = MaterialTheme.typography.labelLarge,
+                        "  ${p.name}  ·  ${p.host.ifBlank { "(no host)" }}:${p.port}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
-                    Text("use", style = MaterialTheme.typography.bodySmall)
                     Switch(checked = p.enabled, onCheckedChange = { vm.setEnabled(i, it) })
                     if (config.profiles.size > 1) {
-                        TextButton(onClick = { vm.removeProfile(i) }) { Text("✕") }
+                        TextButton(onClick = { vm.removeProfile(i) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) { Text("✕") }
                     }
                 }
-                OutlinedTextField(
-                    value = p.host, onValueChange = { vm.setHost(i, it) },
-                    label = { Text("host") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = p.port.toString(), onValueChange = { vm.setPort(i, it) },
-                        label = { Text("port") }, singleLine = true, modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = p.preferredMount, onValueChange = { vm.setMount(i, it) },
-                        label = { Text("mount (blank=AUTO)") }, singleLine = true, modifier = Modifier.weight(2f),
-                    )
+                if (isActive) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                        OutlinedTextField(
+                            value = p.host, onValueChange = { vm.setHost(i, it) },
+                            label = { Text("host") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = p.port.toString(), onValueChange = { vm.setPort(i, it) },
+                                label = { Text("port") }, singleLine = true, modifier = Modifier.weight(1f),
+                            )
+                            OutlinedTextField(
+                                value = p.preferredMount, onValueChange = { vm.setMount(i, it) },
+                                label = { Text("mount (blank=AUTO)") }, singleLine = true, modifier = Modifier.weight(2f),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = p.user, onValueChange = { vm.setUser(i, it) },
+                                label = { Text("user") }, singleLine = true, modifier = Modifier.weight(1f),
+                            )
+                            OutlinedTextField(
+                                value = p.pass, onValueChange = { vm.setPass(i, it) },
+                                label = { Text("pass") }, singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        ScanSection(vm)
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = p.user, onValueChange = { vm.setUser(i, it) },
-                        label = { Text("user") }, singleLine = true, modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = p.pass, onValueChange = { vm.setPass(i, it) },
-                        label = { Text("pass") }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                if (isActive) ScanSection(vm)
             }
         }
     }
@@ -260,6 +280,37 @@ private fun ScanSection(vm: RtkViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun TrajectoryMap(points: List<GeoPt>) {
+    val ctx = LocalContext.current
+    val mapView = remember {
+        Configuration.getInstance().userAgentValue = ctx.packageName
+        MapView(ctx).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            controller.setZoom(18.0)
+        }
+    }
+    DisposableEffect(Unit) {
+        mapView.onResume()
+        onDispose { mapView.onPause() }
+    }
+    AndroidView(
+        factory = { mapView },
+        modifier = Modifier.fillMaxWidth().height(260.dp),
+        update = { map ->
+            map.overlays.clear()
+            if (points.isNotEmpty()) {
+                val geo = points.map { GeoPoint(it.lat, it.lon) }
+                map.overlays.add(Polyline().apply { setPoints(geo); outlinePaint.strokeWidth = 8f })
+                map.overlays.add(Marker(map).apply { position = geo.last() })
+                map.controller.setCenter(geo.last())
+            }
+            map.invalidate()
+        },
+    )
 }
 
 @Composable

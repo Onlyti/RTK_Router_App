@@ -45,7 +45,12 @@ data class RtkStatus(
     val rxHdop: Double = Double.NaN,
     val rxAltM: Double = Double.NaN,
     val lastNmea: String = "",
+    // recent receiver track (~last minute) for the map overlay
+    val trajectory: List<GeoPt> = emptyList(),
 )
+
+/** A receiver position sample for the trajectory overlay. */
+data class GeoPt(val lat: Double, val lon: Double)
 
 /** Process-global bridge status. Written by [RtkService], read by the UI. */
 object RtkState {

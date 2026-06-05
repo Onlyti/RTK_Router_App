@@ -76,6 +76,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
+    // OpenStreetMap view for the trajectory overlay (no API key, OSM tiles).
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
