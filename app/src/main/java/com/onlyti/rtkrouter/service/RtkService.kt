@@ -13,7 +13,6 @@ import com.onlyti.rtkrouter.RtkApp
 import com.onlyti.rtkrouter.config.CasterProfile
 import com.onlyti.rtkrouter.config.EndpointMode
 import com.onlyti.rtkrouter.config.RtkConfig
-import com.onlyti.rtkrouter.gnss.LocationHub
 import com.onlyti.rtkrouter.gnss.Nmea
 import com.onlyti.rtkrouter.ntrip.NtripClient
 import com.onlyti.rtkrouter.ntrip.StrEntry
@@ -92,7 +91,6 @@ class RtkService : LifecycleService() {
     @Volatile private var detail = "starting"
     @Volatile private var error = ErrorInfo()
 
-    private lateinit var location: LocationHub
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
@@ -115,8 +113,6 @@ class RtkService : LifecycleService() {
     private fun startBridge() {
         startedAtMs = System.currentTimeMillis()
         startForegroundNotification()
-
-        location = LocationHub(this).also { it.start() }
 
         serial = SerialLink(
             context = this,
@@ -201,22 +197,13 @@ class RtkService : LifecycleService() {
                 ?: vrsList.firstOrNull()
             if (vrs != null) return listOf(StreamTarget(profile, vrs.mount, true, Double.NaN)) to "VRS"
         }
-        val loc = location.lastLocation()
-        val fixed = entries.filter {
-            !it.requiresGga && rtcmFormatRank(it.format) >= 0 && !it.lat.isNaN() && !it.lon.isNaN()
-        }
+        // No phone GPS (location permission removed) -> can't geo-rank. Pick best RTCM3 mounts,
+        // NEVER CMR/CMR+. For true nearest fixed-base selection use Scan + MANUAL.
         val n = config.hotStandbyCount.coerceIn(1, 5)
-        val picked = if (loc != null && fixed.isNotEmpty()) {
-            fixed.map { it to haversineKm(loc.latitude, loc.longitude, it.lat, it.lon) }
-                .sortedBy { it.second }.take(n)
-                .map { StreamTarget(profile, it.first.mount, it.first.requiresGga, it.second) }
-        } else {
-            // No usable fixed stations (e.g. VRS-only caster) -> best RTCM3 mounts, NEVER CMR/CMR+.
-            entries.filter { rtcmFormatRank(it.format) >= 0 }
-                .sortedByDescending { rtcmFormatRank(it.format) }
-                .take(n)
-                .map { StreamTarget(profile, it.mount, it.requiresGga, Double.NaN) }
-        }
+        val picked = entries.filter { rtcmFormatRank(it.format) >= 0 }
+            .sortedByDescending { rtcmFormatRank(it.format) }
+            .take(n)
+            .map { StreamTarget(profile, it.mount, it.requiresGga, Double.NaN) }
         return picked to "NEAREST"
     }
 
@@ -236,9 +223,9 @@ class RtkService : LifecycleService() {
     }
 
     /**
-     * GGA to upload to the caster (VRS). Prefer the receiver's OWN GGA (authoritative
-     * position, cm-accurate once RTK) read from serial; fall back to phone GPS only until
-     * the receiver has a fix. This is what lets us later drop the phone location permission.
+     * GGA to upload to the caster (VRS) — the receiver's OWN GGA read from serial (authoritative,
+     * cm-accurate once RTK). No phone GPS (location permission removed). Until the receiver has
+     * a single-point fix (quality>=1) we send nothing; VRS then starts once it does (seconds).
      */
     private fun ggaForUpload(): String? {
         val raw = lastNmea
@@ -247,7 +234,7 @@ class RtkService : LifecycleService() {
             sessionTx.addAndGet(gga.length.toLong())
             return gga
         }
-        return buildGga()   // fallback: phone GPS seed before receiver has a fix
+        return null
     }
 
     private fun onStreamRtcm(s: BaseStream, buf: ByteArray, n: Int) {
@@ -258,14 +245,6 @@ class RtkService : LifecycleService() {
             lastRtcmAtMs = s.lastDataMs
             serial?.write(buf, n)
         }
-    }
-
-    private fun buildGga(): String? {
-        val loc = location.lastLocation() ?: return null
-        val secOfDay = ((System.currentTimeMillis() / 1000L) % 86400L).toDouble()
-        val gga = Nmea.buildGga(loc.latitude, loc.longitude, if (loc.hasAltitude()) loc.altitude else 0.0, secOfDay)
-        sessionTx.addAndGet(gga.length.toLong())
-        return gga
     }
 
     private val nmeaBuf = StringBuilder()
@@ -328,15 +307,14 @@ class RtkService : LifecycleService() {
         }
 
         // VRS auto-detect, per stream: a mount that connects but stays silent is almost
-        // certainly a VRS waiting for GGA. If we have a position, enable GGA — no toggle.
-        if (location.lastLocation() != null) {
-            for (s in streams) {
-                if (!s.ggaActive && s.connected && s.connectedAtMs > 0 &&
-                    s.rxBytes.get() == 0L && now - s.connectedAtMs > GGA_PROBE_MS
-                ) {
-                    s.ggaActive = true
-                    Log.d(TAG, "VRS auto-detected on ${s.profile.name}/${s.mount}: enabling GGA")
-                }
+        // certainly a VRS waiting for GGA. Enable GGA; ggaForUpload sends the receiver's GGA
+        // once it has a fix.
+        for (s in streams) {
+            if (!s.ggaActive && s.connected && s.connectedAtMs > 0 &&
+                s.rxBytes.get() == 0L && now - s.connectedAtMs > GGA_PROBE_MS
+            ) {
+                s.ggaActive = true
+                Log.d(TAG, "VRS auto-detected on ${s.profile.name}/${s.mount}: enabling GGA")
             }
         }
 
@@ -442,16 +420,13 @@ class RtkService : LifecycleService() {
             .setContentIntent(pi)
             .setOngoing(true)
             .build()
-        val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-        ServiceCompat.startForeground(this, NOTIF_ID, notif, type)
+        ServiceCompat.startForeground(this, NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     override fun onDestroy() {
         streams.forEach { it.client?.stop() }
         streams = emptyList()
         serial?.close()
-        if (this::location.isInitialized) location.stop()
         RtkState.reset()
         super.onDestroy()
     }

@@ -81,13 +81,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requiredPermissions(): Array<String> {
-        val p = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            p.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        return p.toTypedArray()
-    }
+    // Only notification permission (Android 13+); no location — GGA comes from the receiver.
+    private fun requiredPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray()
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
