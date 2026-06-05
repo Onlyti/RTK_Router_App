@@ -146,7 +146,25 @@ private fun RtkScreen(vm: RtkViewModel, onStart: () -> Unit) {
 
         Text("Trajectory (last ~1 min)", style = MaterialTheme.typography.labelLarge)
         TrajectoryMap(status.trajectory)
+
+        SupportButton()
     }
+}
+
+// Genuine donation (no goods in return) -> external link is Play-policy OK. Replace with your ID.
+private const val DONATE_URL = "https://ko-fi.com/onlyti"
+
+@Composable
+private fun SupportButton() {
+    val ctx = LocalContext.current
+    OutlinedButton(
+        onClick = {
+            runCatching {
+                ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)))
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("☕  Support on Ko-fi") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
