@@ -23,3 +23,7 @@ keystore.properties
 # Logs
 *.log
 __pycache__/
+
+# keystore base64 (절대 커밋 금지)
+*.b64
+upload.jks.b64
