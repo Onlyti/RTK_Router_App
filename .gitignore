@@ -22,3 +22,4 @@ keystore.properties
 
 # Logs
 *.log
+__pycache__/
