@@ -31,6 +31,13 @@ object CasterPresets {
             port = 2101,
             hint = "VRS. mount 예: VRS-RTCM32, user 예: seoul",
         ),
+        CasterPreset(
+            country = "WW",
+            name = "RTK2GO (community, free)",
+            host = "rtk2go.com",
+            port = 2101,
+            hint = "커뮤니티 고정국. NEAREST + Scan 으로 근처 base 선택. user=이메일, pw=아무거나",
+        ),
     )
 
     val COUNTRIES: List<String> = ALL.map { it.country }.distinct()
