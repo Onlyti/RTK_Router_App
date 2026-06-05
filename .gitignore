@@ -15,5 +15,10 @@ local.properties
 .idea/
 *.iml
 
+# Signing — never commit keystore or passwords
+keystore.properties
+*.jks
+*.keystore
+
 # Logs
 *.log

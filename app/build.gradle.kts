@@ -19,6 +19,25 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // Release signing from env (CI secrets) or keystore.properties (local). Both gitignored.
+    val ksProps = java.util.Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    fun cfg(k: String): String? = System.getenv(k) ?: ksProps.getProperty(k)
+    val hasReleaseKey = cfg("RELEASE_STORE_FILE") != null
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(cfg("RELEASE_STORE_FILE")!!)
+                storePassword = cfg("RELEASE_STORE_PASSWORD")
+                keyAlias = cfg("RELEASE_KEY_ALIAS")
+                keyPassword = cfg("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -26,6 +45,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
