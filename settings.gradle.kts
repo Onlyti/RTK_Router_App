@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "rtk-router"
 include(":app")
+include(":desktopApp")
