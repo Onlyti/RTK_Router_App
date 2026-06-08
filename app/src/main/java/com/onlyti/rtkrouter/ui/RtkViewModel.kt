@@ -54,8 +54,19 @@ class RtkViewModel(app: Application) : AndroidViewModel(app) {
         cfg.copy(profiles = list, activeIndex = list.size - 1)
     }
 
-    fun addPreset(preset: com.onlyti.rtkrouter.config.CasterPreset) =
-        addProfile(host = preset.host, port = preset.port, name = preset.name)
+    fun addPreset(preset: com.onlyti.rtkrouter.config.CasterPreset) = update { cfg ->
+        val list = cfg.profiles.toMutableList()
+        list.add(
+            CasterProfile(
+                name = preset.name,
+                host = preset.host,
+                port = preset.port,
+                preferredMount = preset.defaultMount,
+                priority = list.size,
+            ),
+        )
+        cfg.copy(profiles = list, activeIndex = list.size - 1)
+    }
 
     fun removeProfile(i: Int) = update { cfg ->
         if (cfg.profiles.size <= 1) return@update cfg     // keep at least one
