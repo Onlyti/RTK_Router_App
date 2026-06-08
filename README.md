@@ -28,8 +28,18 @@ NTRIP caster ──RTCM3/TCP──▶ [폰 NTRIP client] ──▶ [USB serial T
 | M5 | 운영 | 수신기 프로파일 다중 + 세션 로깅 |
 
 ## 빌드 / 실행
-- APK: `./gradlew assembleDebug` (phone-sensor 패턴) — 산출물 `app/build/outputs/apk/debug/`.
+
+### Android
+- APK: `./gradlew assembleDebug` — 산출물 `app/build/outputs/apk/debug/`.
 - 폰: NTRIP 설정(host/port/mount/auth) 입력 → USB 수신기 연결(OTG) → baud 선택 → START.
+
+### Desktop (Linux & Windows)
+- 실행: `./gradlew :desktopApp:run` (JDK 17)
+- Linux: `/dev/ttyACM0`, `/dev/ttyUSB0` — 시리얼 권한은 앱 내 pkexec/sudo 또는 `dialout` 그룹
+- Windows: `COM*` 포트 선택 (드라이버 설치 후)
+- 릴리즈: 태그 `v*` push → GitHub Release에 APK/AAB + `.deb` + `.msi` 자동 첨부
+- 로컬 패키지: `./gradlew :desktopApp:packageReleaseDeb` (Linux) / `packageReleaseMsi` (Windows)
+- 상세: [desktopApp/README.md](desktopApp/README.md)
 
 ## 참조
 - phone-sensor-stream: 같은 Kotlin/Compose 스택, USB/GNSS(gnsstest) 코드 재사용 후보.
