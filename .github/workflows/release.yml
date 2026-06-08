@@ -63,7 +63,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build Linux .deb
-        run: ./gradlew :desktopApp:packageReleaseDeb --stacktrace -Dorg.gradle.configureondemand=true
+        run: ./gradlew :desktopApp:packageReleaseDeb --stacktrace
 
       - name: Upload Linux .deb
         uses: actions/upload-artifact@v4
@@ -87,7 +87,7 @@ jobs:
 
       - name: Build Windows .msi
         shell: pwsh
-        run: .\gradlew :desktopApp:packageReleaseMsi --stacktrace -Dorg.gradle.configureondemand=true
+        run: .\gradlew :desktopApp:packageReleaseMsi --stacktrace
 
       - name: Upload Windows .msi
         uses: actions/upload-artifact@v4
