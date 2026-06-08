@@ -98,7 +98,19 @@ class DesktopViewModel {
         cfg.copy(profiles = list, activeIndex = list.size - 1)
     }
 
-    fun addPreset(preset: CasterPreset) = addProfile(host = preset.host, port = preset.port, name = preset.name)
+    fun addPreset(preset: CasterPreset) = updateConfig { cfg ->
+        val list = cfg.profiles.toMutableList()
+        list.add(
+            CasterProfile(
+                name = preset.name,
+                host = preset.host,
+                port = preset.port,
+                preferredMount = preset.defaultMount,
+                priority = list.size,
+            ),
+        )
+        cfg.copy(profiles = list, activeIndex = list.size - 1)
+    }
 
     fun removeProfile(i: Int) = updateConfig { cfg ->
         if (cfg.profiles.size <= 1) return@updateConfig cfg
