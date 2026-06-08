@@ -30,15 +30,15 @@ Outputs under `desktopApp/build/compose/binaries/main-release/`.
 
 ## GitHub Release (CI)
 
-`v*` tag push (e.g. `v0.1.0`) triggers [.github/workflows/release.yml](../.github/workflows/release.yml):
+`v*` tag push (e.g. `v1.0.1`) triggers [.github/workflows/release.yml](../.github/workflows/release.yml):
 
 - Android: `app-release.apk`, `app-release.aab`
 - Linux: `rtk-router_*_amd64.deb`
 - Windows: `rtk-router-*.msi`
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 ## Linux serial permissions

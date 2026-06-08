@@ -1,6 +1,6 @@
 name: Release
 
-# Tag push (e.g. v0.1.0) -> Android APK/AAB + Linux .deb + Windows .msi on GitHub Release.
+# Tag push (e.g. v1.0.1) -> Android APK/AAB + Linux .deb + Windows .msi on GitHub Release.
 on:
   push:
     tags: ['v*']
