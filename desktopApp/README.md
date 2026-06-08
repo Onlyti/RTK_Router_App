@@ -57,6 +57,22 @@ sudo usermod -aG dialout $USER
 # log out and back in
 ```
 
+## Windows install & launch
+
+Default install folder:
+
+```
+C:\Program Files\rtk-router\rtk-router.exe
+```
+
+If the Start menu has no shortcut (MSI builds before 1.0.2):
+
+1. Press `Win+R`, paste `C:\Program Files\rtk-router`, Enter
+2. Double-click `rtk-router.exe`
+3. Or: Settings → Apps → RTK Router → **Open file location**
+
+From 1.0.2 onward the MSI adds Start menu and optional desktop shortcuts.
+
 ## Windows serial
 
 USB-UART 또는 u-blox CDC 드라이버 설치 후 Device Manager에서 COM 포트 번호를 확인하세요. 별도 권한 설정은 필요 없습니다.

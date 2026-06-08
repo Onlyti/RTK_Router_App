@@ -37,6 +37,13 @@ compose.desktop {
             packageVersion = "1.0.1"
             description = "NTRIP RTCM router for GNSS receivers"
             vendor = "onlyti"
+
+            windows {
+                menu = true
+                menuGroup = "RTK Router"
+                shortcut = true
+                shortcutPrompt = true
+            }
         }
     }
 }
