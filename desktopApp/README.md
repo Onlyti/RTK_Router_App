@@ -65,13 +65,14 @@ Default install folder:
 C:\Program Files\rtk-router\rtk-router.exe
 ```
 
-If the Start menu has no shortcut (MSI builds before 1.0.2):
+If the Start menu has no shortcut:
 
-1. Press `Win+R`, paste `C:\Program Files\rtk-router`, Enter
-2. Double-click `rtk-router.exe`
-3. Or: Settings → Apps → RTK Router → **Open file location**
+1. Reinstall with MSI **1.0.4+** (installer shows shortcut checkboxes — leave both checked).
+2. After install, check **Start → All apps → RTK Router** (folder) or search `rtk-router`.
+3. Machine-wide shortcut path: `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\RTK Router\`
+4. Manual launch: `C:\Program Files\rtk-router\rtk-router.exe` or Win+R → paste that folder.
 
-From 1.0.2 onward the MSI adds Start menu and optional desktop shortcuts.
+MSI 1.0.1 had no shortcuts. 1.0.2–1.0.3 CI/config issues; 1.0.4 adds `--win-shortcut-prompt`.
 
 ## Windows serial
 
