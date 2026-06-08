@@ -6,19 +6,25 @@ import com.onlyti.rtkrouter.desktop.config.CasterProfile
 import com.onlyti.rtkrouter.desktop.config.DesktopSettings
 import com.onlyti.rtkrouter.desktop.config.EndpointMode
 import com.onlyti.rtkrouter.desktop.config.RtkConfig
+import com.onlyti.rtkrouter.desktop.config.SerialConnectOptions
+import com.onlyti.rtkrouter.desktop.config.SerialConnectionMode
 import com.onlyti.rtkrouter.desktop.ntrip.NtripClient
 import com.onlyti.rtkrouter.desktop.ntrip.StrEntry
 import com.onlyti.rtkrouter.desktop.ntrip.rtcmFormatRank
 import com.onlyti.rtkrouter.desktop.prefs.DesktopPrefs
+import com.onlyti.rtkrouter.desktop.serial.PortAvailability
+import com.onlyti.rtkrouter.desktop.serial.PortScanEntry
 import com.onlyti.rtkrouter.desktop.serial.SerialPermission
-import com.onlyti.rtkrouter.desktop.serial.SerialPortHelper
-import com.onlyti.rtkrouter.desktop.serial.SerialPortInfo
+import com.onlyti.rtkrouter.desktop.serial.SerialPortScanner
 import com.onlyti.rtkrouter.desktop.service.RtkState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 sealed interface ScanState {
@@ -51,11 +57,13 @@ class DesktopViewModel {
     private val _scan = MutableStateFlow<ScanState>(ScanState.Idle)
     val scan: StateFlow<ScanState> = _scan
 
-    private val _ports = MutableStateFlow(SerialPortHelper.listPorts())
-    val ports: StateFlow<List<SerialPortInfo>> = _ports
+    private val _portEntries = MutableStateFlow<List<PortScanEntry>>(emptyList())
+    val portEntries: StateFlow<List<PortScanEntry>> = _portEntries
 
     private val _permissionDialog = MutableStateFlow(PermissionDialogState())
     val permissionDialog: StateFlow<PermissionDialogState> = _permissionDialog
+
+    private var portScanJob: Job? = null
 
     private fun save(settings: DesktopSettings) {
         _settings.value = settings
@@ -72,16 +80,43 @@ class DesktopViewModel {
         cfg.copy(profiles = list)
     }
 
-    fun refreshPorts() {
-        _ports.value = SerialPortHelper.listPorts()
-        val guess = SerialPortHelper.guessGnssPorts()
-        if (_settings.value.serialDevicePath.isBlank() && guess.isNotEmpty()) {
-            setSerialDevicePath(guess.first().systemPortName)
+    fun beginPortScanning() {
+        scanPorts()
+        portScanJob?.cancel()
+        portScanJob = scope.launch {
+            while (isActive) {
+                delay(PORT_SCAN_INTERVAL_MS)
+                if (!status.value.running) scanPorts()
+            }
         }
     }
 
+    fun scanPorts() {
+        val mode = _settings.value.connectionMode
+        val entries = SerialPortScanner.scan(mode)
+        _portEntries.value = entries
+        if (!_settings.value.userPickedPort) {
+            SerialPortScanner.defaultFreePort(entries)?.let { pick ->
+                if (pick.systemPortName != _settings.value.serialDevicePath) {
+                    save(_settings.value.copy(serialDevicePath = pick.systemPortName))
+                }
+            }
+        }
+    }
+
+    fun setConnectionMode(mode: SerialConnectionMode) {
+        save(
+            _settings.value.copy(
+                connectionMode = mode,
+                userPickedPort = false,
+                serialDevicePath = "",
+            ),
+        )
+        scanPorts()
+    }
+
     fun setSerialDevicePath(path: String) {
-        save(_settings.value.copy(serialDevicePath = path))
+        save(_settings.value.copy(serialDevicePath = path, userPickedPort = true))
     }
 
     fun setHost(i: Int, v: String) = updateProfileAt(i) { it.copy(host = v.trim()) }
@@ -152,12 +187,27 @@ class DesktopViewModel {
         val s = _settings.value
         val path = s.serialDevicePath
         if (path.isBlank()) {
-            _permissionDialog.value = PermissionDialogState(
-                visible = true,
-                devicePath = "",
-                message = "시리얼 포트를 선택하세요.",
-            )
+            showMessage("시리얼 포트를 선택하세요.")
             return
+        }
+        val entry = _portEntries.value.find { it.systemPortName == path }
+        when (entry?.availability) {
+            PortAvailability.BUSY -> {
+                showMessage("$path 는 다른 앱이 사용 중입니다. 다른 포트를 선택하세요.")
+                return
+            }
+            PortAvailability.NO_PERMISSION -> {
+                if (SerialPermission.needsPermissionFix() && !SerialPermission.canReadWrite(path)) {
+                    _permissionDialog.value = PermissionDialogState(
+                        visible = true,
+                        devicePath = path,
+                        message = "$path 에 접근 권한이 없습니다.\npkexec 또는 sudo로 권한을 부여하세요.",
+                        usePkexec = SerialPermission.hasPkexec(),
+                    )
+                    return
+                }
+            }
+            else -> Unit
         }
         if (SerialPermission.needsPermissionFix() && !SerialPermission.canReadWrite(path)) {
             _permissionDialog.value = PermissionDialogState(
@@ -168,7 +218,17 @@ class DesktopViewModel {
             )
             return
         }
-        bridge.start(s.config, path)
+        val options = SerialConnectOptions(
+            mode = s.connectionMode,
+            devicePath = path,
+            baud = s.config.baud,
+            novAtelUsbIndex = entry?.novAtelUsbIndex?.takeIf { it > 0 } ?: 1,
+        )
+        bridge.start(s.config, options)
+    }
+
+    private fun showMessage(msg: String) {
+        _permissionDialog.value = PermissionDialogState(visible = true, devicePath = "", message = msg)
     }
 
     fun stop() = bridge.stop()
@@ -229,5 +289,12 @@ class DesktopViewModel {
         }
     }
 
-    fun shutdown() = bridge.shutdown()
+    fun shutdown() {
+        portScanJob?.cancel()
+        bridge.shutdown()
+    }
+
+    companion object {
+        private const val PORT_SCAN_INTERVAL_MS = 5_000L
+    }
 }

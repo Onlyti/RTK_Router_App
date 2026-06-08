@@ -3,10 +3,14 @@ package com.onlyti.rtkrouter.desktop.bridge
 import com.onlyti.rtkrouter.desktop.config.CasterProfile
 import com.onlyti.rtkrouter.desktop.config.EndpointMode
 import com.onlyti.rtkrouter.desktop.config.RtkConfig
+import com.onlyti.rtkrouter.desktop.config.SerialConnectOptions
+import com.onlyti.rtkrouter.desktop.config.SerialConnectionMode
 import com.onlyti.rtkrouter.desktop.gnss.Nmea
 import com.onlyti.rtkrouter.desktop.ntrip.NtripClient
 import com.onlyti.rtkrouter.desktop.ntrip.StrEntry
 import com.onlyti.rtkrouter.desktop.ntrip.rtcmFormatRank
+import com.onlyti.rtkrouter.desktop.serial.NovAtelConfigResult
+import com.onlyti.rtkrouter.desktop.serial.NovAtelConfigurator
 import com.onlyti.rtkrouter.desktop.serial.SerialLink
 import com.onlyti.rtkrouter.desktop.service.ErrorInfo
 import com.onlyti.rtkrouter.desktop.service.GeoPt
@@ -29,8 +33,16 @@ class RtkBridge {
     private var statusJob: Job? = null
 
     private var config: RtkConfig = RtkConfig()
+    private var serialOptions: SerialConnectOptions = SerialConnectOptions(
+        SerialConnectionMode.RS232, "", 115200,
+    )
     private var serialDevicePath: String = ""
     private var serial: SerialLink? = null
+    @Volatile private var wantsRun = false
+    @Volatile private var lastGgaMs = 0L
+    @Volatile private var healthLevel = "ok"
+    @Volatile private var healthMessage = ""
+    private var reconnectJob: Job? = null
 
     private class BaseStream(
         val id: Int,
@@ -75,34 +87,29 @@ class RtkBridge {
     @Volatile private var detail = "starting"
     @Volatile private var error = ErrorInfo()
 
-    fun start(cfg: RtkConfig, devicePath: String) {
+    fun start(cfg: RtkConfig, options: SerialConnectOptions) {
         stop()
+        wantsRun = true
         config = cfg
-        serialDevicePath = devicePath
+        serialOptions = options
+        serialDevicePath = options.devicePath
         startedAtMs = System.currentTimeMillis()
+        lastGgaMs = 0L
+        healthLevel = "ok"
+        healthMessage = ""
         detail = "starting"
 
-        serial = SerialLink(
-            devicePath = devicePath,
-            baud = config.baud,
-            onConnected = { name ->
-                serialConnected = true
-                serialDeviceName = name
-                detail = "serial: $name @ ${config.baud}"
-            },
-            onDisconnected = { reason ->
-                serialConnected = false
-                error = ErrorInfo("Serial", "L0", reason)
-                detail = reason
-            },
-            onData = { bytes -> onSerialData(bytes) },
-        ).also { it.connect() }
-
-        scope.launch(Dispatchers.IO) { resolveAndConnectNtrip() }
         statusJob = scope.launch { statusLoop() }
+        scope.launch(Dispatchers.IO) {
+            if (!prepareAndOpenSerial()) return@launch
+            resolveAndConnectNtrip()
+        }
     }
 
     fun stop() {
+        wantsRun = false
+        reconnectJob?.cancel()
+        reconnectJob = null
         statusJob?.cancel()
         statusJob = null
         streams.forEach { it.client?.stop() }
@@ -110,6 +117,87 @@ class RtkBridge {
         serial?.close()
         serial = null
         RtkState.reset()
+    }
+
+    private suspend fun prepareAndOpenSerial(): Boolean {
+        if (serialOptions.mode == SerialConnectionMode.NOVATEL_USB) {
+            detail = "NovAtel configuring USB${serialOptions.novAtelUsbIndex}..."
+            when (val result = NovAtelConfigurator.configure(
+                serialOptions.devicePath,
+                serialOptions.novAtelUsbIndex,
+            )) {
+                is NovAtelConfigResult.Failed -> {
+                    healthLevel = "error"
+                    healthMessage = result.message
+                    error = ErrorInfo("NovAtel", "L0", result.message)
+                    detail = result.message
+                    wantsRun = false
+                    return false
+                }
+                is NovAtelConfigResult.Ok -> {
+                    lastGgaMs = System.currentTimeMillis()
+                    detail = "NovAtel RTCM ready on ${serialOptions.devicePath}"
+                }
+            }
+        }
+        openSerialLink()
+        return serialConnected
+    }
+
+    private fun openSerialLink() {
+        val baud = if (serialOptions.mode == SerialConnectionMode.NOVATEL_USB) {
+            NovAtelConfigurator.CONFIG_BAUD
+        } else {
+            serialOptions.baud
+        }
+        serial?.close()
+        serial = SerialLink(
+            devicePath = serialOptions.devicePath,
+            baud = baud,
+            onConnected = { name ->
+                serialConnected = true
+                serialDeviceName = name
+                detail = "serial: $name @ $baud"
+            },
+            onDisconnected = { reason ->
+                serialConnected = false
+                detail = reason
+                if (wantsRun) {
+                    scheduleSerialReconnect(reason)
+                } else {
+                    error = ErrorInfo("Serial", "L0", reason)
+                }
+            },
+            onData = { bytes -> onSerialData(bytes) },
+        ).also { it.connect() }
+    }
+
+    private fun scheduleSerialReconnect(reason: String) {
+        if (reconnectJob?.isActive == true) return
+        reconnectJob = scope.launch(Dispatchers.IO) {
+            healthLevel = "warn"
+            healthMessage = "재접속 중: $reason"
+            delay(RECONNECT_COOLDOWN_MS)
+            var attempts = 0
+            while (wantsRun && attempts < MAX_SERIAL_RECONNECT) {
+                serial?.close()
+                serial = null
+                serialConnected = false
+                if (prepareAndOpenSerial()) {
+                    healthLevel = "ok"
+                    healthMessage = ""
+                    return@launch
+                }
+                attempts++
+                healthMessage = "재접속 중 ($attempts/$MAX_SERIAL_RECONNECT): $reason"
+                delay(RECONNECT_COOLDOWN_MS)
+            }
+            if (wantsRun) {
+                healthLevel = "error"
+                healthMessage = "시리얼 재접속 실패 — STOP 후 포트 확인"
+                error = ErrorInfo("Serial", "L0", healthMessage)
+            }
+        }
     }
 
     fun resetUsage() {
@@ -239,6 +327,7 @@ class RtkBridge {
                     lastFixQuality = gga.quality
                     rxFix = gga
                     lastNmea = line.trim()
+                    lastGgaMs = System.currentTimeMillis()
                 }
                 nl = nmeaBuf.indexOf("\n")
             }
@@ -328,9 +417,15 @@ class RtkBridge {
 
             superviseStreams(now)
 
+            if (wantsRun && serialOptions.mode == SerialConnectionMode.NOVATEL_USB &&
+                serialConnected && lastGgaMs > 0 && now - lastGgaMs > GGA_RUNTIME_MS
+            ) {
+                scheduleSerialReconnect("GGA 없음 (NovAtel 리셋·GNSS 신호·COM 해제 의심)")
+            }
+
             RtkState.update(
                 RtkStatus(
-                    running = true,
+                    running = wantsRun,
                     ntripConnected = ntripConnected,
                     serialConnected = serialConnected,
                     deviceName = serialDeviceName,
@@ -360,6 +455,8 @@ class RtkBridge {
                     rxAltM = rxFix?.altMeters ?: Double.NaN,
                     lastNmea = lastNmea,
                     trajectory = track.map { it.second },
+                    healthLevel = healthLevel,
+                    healthMessage = healthMessage,
                 ),
             )
             delay(500)
@@ -370,6 +467,9 @@ class RtkBridge {
         private const val RATE_WINDOW_MS = 4000L
         private const val NMEA_BUF_CAP = 4096
         private const val GGA_PROBE_MS = 6000L
+        private const val GGA_RUNTIME_MS = 30_000L
+        private const val RECONNECT_COOLDOWN_MS = 5_000L
+        private const val MAX_SERIAL_RECONNECT = 5
         private const val MAX_STREAMS = 6
         private const val TRACK_WINDOW_MS = 60_000L
     }

@@ -67,4 +67,14 @@ data class DesktopSettings(
     val config: RtkConfig = RtkConfig(),
     /** e.g. /dev/ttyACM0 (Linux F9P) or COM3 (Windows). */
     val serialDevicePath: String = "",
+    val connectionMode: SerialConnectionMode = SerialConnectionMode.RS232,
+    /** When true, periodic scan does not override [serialDevicePath]. */
+    val userPickedPort: Boolean = false,
+)
+
+data class SerialConnectOptions(
+    val mode: SerialConnectionMode,
+    val devicePath: String,
+    val baud: Int,
+    val novAtelUsbIndex: Int = 1,
 )

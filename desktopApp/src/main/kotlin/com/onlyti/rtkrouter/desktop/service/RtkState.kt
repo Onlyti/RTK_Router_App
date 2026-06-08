@@ -40,6 +40,9 @@ data class RtkStatus(
     val rxAltM: Double = Double.NaN,
     val lastNmea: String = "",
     val trajectory: List<GeoPt> = emptyList(),
+    /** ok | warn (orange) | error */
+    val healthLevel: String = "ok",
+    val healthMessage: String = "",
 )
 
 data class GeoPt(val lat: Double, val lon: Double)

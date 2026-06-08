@@ -1,7 +1,9 @@
 package com.onlyti.rtkrouter.desktop.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -11,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -42,23 +46,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.onlyti.rtkrouter.desktop.config.CasterPresets
 import com.onlyti.rtkrouter.desktop.config.DesktopSettings
 import com.onlyti.rtkrouter.desktop.config.EndpointMode
 import com.onlyti.rtkrouter.desktop.config.RtkConfig
+import com.onlyti.rtkrouter.desktop.config.SerialConnectionMode
+import com.onlyti.rtkrouter.desktop.serial.PortAvailability
+import com.onlyti.rtkrouter.desktop.serial.PortScanEntry
 import com.onlyti.rtkrouter.desktop.gnss.Nmea
 import com.onlyti.rtkrouter.desktop.platform.Platform
 import com.onlyti.rtkrouter.desktop.serial.SerialPermission
-import com.onlyti.rtkrouter.desktop.serial.SerialPortInfo
 import com.onlyti.rtkrouter.desktop.service.RtkStatus
 
 @Composable
 fun DesktopApp() {
     val vm = remember { DesktopViewModel() }
     DisposableEffect(Unit) {
-        vm.refreshPorts()
+        vm.beginPortScanning()
         onDispose { vm.shutdown() }
     }
 
@@ -77,7 +84,7 @@ fun DesktopApp() {
 @Composable
 private fun DesktopScreen(vm: DesktopViewModel, settings: DesktopSettings, status: RtkStatus) {
     val config = settings.config
-    val ports by vm.ports.collectAsState()
+    val portEntries by vm.portEntries.collectAsState()
 
     Column(
         modifier = Modifier
@@ -93,19 +100,26 @@ private fun DesktopScreen(vm: DesktopViewModel, settings: DesktopSettings, statu
             color = MaterialTheme.colorScheme.outline,
         )
 
-        SerialPortSection(vm, settings.serialDevicePath, ports, status.running)
+        SerialPortSection(
+            vm = vm,
+            settings = settings,
+            portEntries = portEntries,
+            running = status.running,
+        )
 
         ProfilesSection(vm, config)
 
-        Text("Baud (UART adapter only; F9P CDC ignores baud)", style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (b in listOf(4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)) {
-                FilterChip(
-                    selected = config.baud == b,
-                    onClick = { vm.setBaud(b) },
-                    enabled = !status.running,
-                    label = { Text("$b") },
-                )
+        if (settings.connectionMode == SerialConnectionMode.RS232) {
+            Text("Baud (USB-UART adapter)", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (b in listOf(4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)) {
+                    FilterChip(
+                        selected = config.baud == b,
+                        onClick = { vm.setBaud(b) },
+                        enabled = !status.running,
+                        label = { Text("$b") },
+                    )
+                }
             }
         }
 
@@ -146,64 +160,145 @@ private fun DesktopScreen(vm: DesktopViewModel, settings: DesktopSettings, statu
 @Composable
 private fun SerialPortSection(
     vm: DesktopViewModel,
-    selectedPath: String,
-    ports: List<SerialPortInfo>,
+    settings: DesktopSettings,
+    portEntries: List<PortScanEntry>,
     running: Boolean,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var modeExpanded by remember { mutableStateOf(false) }
+    var portExpanded by remember { mutableStateOf(false) }
+    val selectedPath = settings.serialDevicePath
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Serial port", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = vm::refreshPorts, enabled = !running) {
+                Text("Connection", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                IconButton(onClick = vm::scanPorts, enabled = !running) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh ports")
                 }
             }
-            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { if (!running) expanded = it }) {
+
+            ExposedDropdownMenuBox(
+                expanded = modeExpanded,
+                onExpandedChange = { if (!running) modeExpanded = it },
+            ) {
+                OutlinedTextField(
+                    value = when (settings.connectionMode) {
+                        SerialConnectionMode.RS232 -> "RS232 (USB-UART / adapter)"
+                        SerialConnectionMode.NOVATEL_USB -> "NovAtel USB (multi-COM)"
+                    },
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    label = { Text("Interface") },
+                    enabled = !running,
+                )
+                ExposedDropdownMenu(expanded = modeExpanded, onDismissRequest = { modeExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("RS232 (USB-UART / adapter)") },
+                        onClick = {
+                            vm.setConnectionMode(SerialConnectionMode.RS232)
+                            modeExpanded = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("NovAtel USB (auto RTCM config)") },
+                        onClick = {
+                            vm.setConnectionMode(SerialConnectionMode.NOVATEL_USB)
+                            modeExpanded = false
+                        },
+                    )
+                }
+            }
+
+            if (settings.connectionMode == SerialConnectionMode.NOVATEL_USB) {
+                Text(
+                    "START 시 LOG GPGGA + INTERFACEMODE RTCM ON (SAVECONFIG 없음). " +
+                        "기본: 사용 가능한 COM 번호가 가장 높은 포트.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = portExpanded,
+                onExpandedChange = { if (!running) portExpanded = it },
+            ) {
                 OutlinedTextField(
                     value = selectedPath.ifBlank { "(select port)" },
                     onValueChange = {},
                     readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = portExpanded) },
                     modifier = Modifier.menuAnchor().fillMaxWidth(),
-                    label = { Text(Platform.serialPortHint) },
+                    label = { Text(if (settings.connectionMode == SerialConnectionMode.RS232) Platform.serialPortHint else "NovAtel COM port") },
                     enabled = !running,
                 )
-                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    if (ports.isEmpty()) {
+                ExposedDropdownMenu(expanded = portExpanded, onDismissRequest = { portExpanded = false }) {
+                    if (portEntries.isEmpty()) {
                         DropdownMenuItem(
-                            text = { Text("no ports found — plug in USB device") },
-                            onClick = { expanded = false },
+                            text = { Text("no matching ports — check mode & USB cable") },
+                            onClick = { portExpanded = false },
                         )
                     } else {
-                        for (p in ports) {
-                            val label = buildString {
-                                append(p.systemPortName)
-                                if (p.descriptiveName.isNotBlank() && p.descriptiveName != p.systemPortName) {
-                                    append("  ·  ")
-                                    append(p.descriptiveName)
-                                }
-                            }
+                        for (p in portEntries) {
                             DropdownMenuItem(
-                                text = { Text(label) },
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        PortLed(p.availability)
+                                        Text(p.displayLabel, modifier = Modifier.padding(start = 8.dp))
+                                    }
+                                },
                                 onClick = {
                                     vm.setSerialDevicePath(p.systemPortName)
-                                    expanded = false
+                                    portExpanded = false
                                 },
                             )
                         }
                     }
                 }
             }
+
+            if (portEntries.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (p in portEntries) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PortLed(p.availability)
+                            Text(
+                                "${p.displayLabel} — ${portAvailabilityLabel(p.availability)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
             Platform.serialPermissionHint?.let { hint ->
-                Text(
-                    hint,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
             }
         }
     }
+}
+
+@Composable
+private fun PortLed(availability: PortAvailability) {
+    val color = when (availability) {
+        PortAvailability.AVAILABLE -> Color(0xFF2E7D32)
+        PortAvailability.BUSY -> Color(0xFFC62828)
+        PortAvailability.NO_PERMISSION -> Color(0xFF9E9E9E)
+    }
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .background(color, CircleShape),
+    )
+}
+
+private fun portAvailabilityLabel(a: PortAvailability): String = when (a) {
+    PortAvailability.AVAILABLE -> "available"
+    PortAvailability.BUSY -> "in use"
+    PortAvailability.NO_PERMISSION -> "no permission"
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -346,6 +441,13 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean, onResetUsage: () ->
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Status", style = MaterialTheme.typography.titleMedium)
+            if (s.healthLevel == "warn" && s.healthMessage.isNotBlank()) {
+                Text(
+                    "⚠ ${s.healthMessage}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFE65100),
+                )
+            }
             line("NTRIP", if (s.ntripConnected) "connected" else "down")
             line("Serial", if (s.serialConnected) s.deviceName else "down")
             line("Provider/Mount", "${s.activeProfileName} / ${s.activeMount.ifBlank { "-" }}")
