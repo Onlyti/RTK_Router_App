@@ -1,0 +1,23 @@
+#!/bin/sh
+# Custom jpackage postinst: keep the menu entry registration and additionally
+# expose the launcher on PATH via /usr/local/bin (jpackage installs only under
+# /opt and does not add a PATH entry). /usr/local/bin is on the default PATH.
+
+set -e
+
+case "$1" in
+    configure)
+        xdg-desktop-menu install /opt/rtk-router/lib/rtk-router-rtk-router.desktop || true
+        ln -sf /opt/rtk-router/bin/rtk-router /usr/local/bin/rtk-router
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0

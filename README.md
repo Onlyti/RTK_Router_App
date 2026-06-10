@@ -46,13 +46,17 @@ NTRIP caster ──RTCM3/TCP──▶ [폰 NTRIP client] ──▶ [USB serial T
 셸이 아카이브를 스크립트로 해석해 `syntax error near unexpected token 'newline'` /
 `` `!<arch>' `` 에러가 난다(이건 정상 동작 — 설치 명령을 써야 한다).
 ```bash
-sudo apt install ./rtk-router_1.0.4-1_amd64.deb     # 권장 (의존성 자동 처리)
+sudo apt install ./rtk-router_1.0.5-1_amd64.deb     # 권장 (의존성 자동 처리)
 #   또는
-sudo dpkg -i rtk-router_1.0.4-1_amd64.deb
+sudo dpkg -i rtk-router_1.0.5-1_amd64.deb
 sudo apt -f install                                  # dpkg 가 의존성 부족 시 보충
-
-rtk-router                                           # 설치 후 실행 (PATH 등록됨)
-#   또는 /opt/rtk-router/bin/rtk-router
+```
+설치 위치는 `/opt/rtk-router/` 이고 `/usr/bin` 에 자동 등록되지 않는다(PATH 에 없음).
+GUI 데스크톱이면 애플리케이션 메뉴의 "RTK Router" 로 실행, 터미널이면 전체 경로로 실행한다:
+```bash
+/opt/rtk-router/bin/rtk-router                       # 설치 후 실행 (전체 경로)
+#   매번 'rtk-router' 로 부르고 싶으면 심볼릭 한 번:
+sudo ln -sf /opt/rtk-router/bin/rtk-router /usr/local/bin/rtk-router
 sudo apt remove rtk-router                            # 제거
 ```
 

@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.onlyti.rtkrouter"
-version = "1.0.4"
+version = "1.0.5"
 
 kotlin {
     jvmToolchain(17)
@@ -35,7 +35,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Msi)
             packageName = "rtk-router"
-            packageVersion = "1.0.4"
+            packageVersion = "1.0.5"
             description = "NTRIP RTCM router for GNSS receivers"
             vendor = "onlyti"
 
@@ -66,5 +66,30 @@ compose.desktop {
 tasks.withType<AbstractJPackageTask>().configureEach {
     if (targetFormat == TargetFormat.Msi) {
         freeArgs.add("--win-shortcut-prompt")
+    }
+    // Deb: jpackage installs only under /opt and adds no PATH entry, so after the
+    // package is built we repack it (via dpkg-deb, which jpackage itself uses to
+    // build the .deb, so it is always present here) to swap in postinst/postrm
+    // that create a /usr/local/bin symlink — making `rtk-router` work on PATH
+    // after install. Overriding jpackage's resource-dir doesn't take because
+    // Compose passes its own resource-dir, so we patch the finished artifact.
+    // Canonical scripts live in jpackage/linux/.
+    if (targetFormat == TargetFormat.Deb) {
+        doLast {
+            val debDir = project.layout.buildDirectory.dir("compose/binaries/main-release/deb").get().asFile
+            val deb = debDir.listFiles { f -> f.name.endsWith(".deb") }?.firstOrNull()
+                ?: throw GradleException("packageReleaseDeb: .deb not found in $debDir")
+            val work = File(project.layout.buildDirectory.get().asFile, "deb-repack")
+            work.deleteRecursively()
+            project.exec { commandLine("dpkg-deb", "-R", deb.absolutePath, work.absolutePath) }
+            val ctrl = File(work, "DEBIAN")
+            for (name in listOf("postinst", "postrm")) {
+                val dst = File(ctrl, name)
+                project.file("jpackage/linux/$name").copyTo(dst, overwrite = true)
+                dst.setExecutable(true, false)
+            }
+            project.exec { commandLine("dpkg-deb", "--build", work.absolutePath, deb.absolutePath) }
+            work.deleteRecursively()
+        }
     }
 }

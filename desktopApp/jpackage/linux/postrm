@@ -1,0 +1,20 @@
+#!/bin/sh
+# Custom jpackage postrm: remove the PATH symlink created in postinst.
+
+set -e
+
+case "$1" in
+    remove|purge)
+        rm -f /usr/local/bin/rtk-router
+    ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0
