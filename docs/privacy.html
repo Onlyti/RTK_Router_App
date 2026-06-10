@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — RTK Router</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+         max-width: 760px; margin: 0 auto; padding: 24px 18px 64px; line-height: 1.65;
+         color: #1a1a1a; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #121212; } a { color: #6ab7ff; } }
+  h1 { font-size: 1.5rem; margin: 1.2em 0 .2em; }
+  h2 { font-size: 1.1rem; margin: 1.4em 0 .3em; border-bottom: 1px solid #8884; padding-bottom: .2em; }
+  code { background: #8881; padding: 1px 5px; border-radius: 4px; }
+  .updated { color: #888; font-size: .9rem; }
+  hr { border: none; border-top: 1px solid #8884; margin: 2.5em 0; }
+  ul { padding-left: 1.2em; }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy — RTK Router</h1>
+<p class="updated">Last updated: 2026-06-05</p>
+
+<p>RTK Router ("the app") is an Android utility that routes RTK GNSS correction data (RTCM3)
+from an NTRIP caster over the internet to a GNSS receiver connected via USB. This policy
+describes how the app handles data. The developer ("we") does not operate any server and
+does not collect personal data.</p>
+
+<h2>Data the app handles</h2>
+<ul>
+  <li><strong>NTRIP caster credentials</strong> (host, port, username, password): entered by you
+      and <strong>stored only on your device</strong> (Android private storage). They are sent
+      <strong>only</strong> to the NTRIP caster you configure, to authenticate your connection.
+      We never receive them.</li>
+  <li><strong>Position data (NMEA GGA)</strong>: read from your connected GNSS receiver over USB
+      and, for VRS-type casters, uploaded to the caster you configure so it can generate
+      corrections. This is sent <strong>only</strong> to your chosen caster. We never receive it.</li>
+  <li><strong>Receiver data (NMEA)</strong>: read from the USB receiver and shown on screen
+      (fix status, satellites, position). Processed on-device only.</li>
+</ul>
+
+<h2>Data we do NOT collect</h2>
+<ul>
+  <li>We collect <strong>no</strong> personal data. There is <strong>no</strong> developer server,
+      <strong>no</strong> analytics, <strong>no</strong> advertising, and <strong>no</strong> tracking.</li>
+  <li>The app does <strong>not</strong> request location (GPS) permission. Position used for VRS
+      comes from your GNSS receiver, not from the phone.</li>
+</ul>
+
+<h2>Third parties</h2>
+<ul>
+  <li><strong>Your NTRIP caster</strong>: data you send to the caster you configure is governed by
+      that provider's own policy. Choose a caster you trust.</li>
+  <li><strong>OpenStreetMap</strong>: the trajectory map loads map tiles from OpenStreetMap servers;
+      your IP address is visible to them when tiles are fetched, per the OSM tile usage policy.</li>
+</ul>
+
+<h2>Permissions</h2>
+<ul>
+  <li>Internet / network state: connect to your NTRIP caster.</li>
+  <li>USB host: communicate with the connected GNSS receiver.</li>
+  <li>Foreground service (data sync) + notifications: keep the correction stream running and show its status.</li>
+</ul>
+
+<h2>Children</h2>
+<p>The app is a technical tool not directed at children and collects no data.</p>
+
+<h2>Changes</h2>
+<p>We may update this policy; the "Last updated" date will change accordingly.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:pauljiwon96@gmail.com">pauljiwon96@gmail.com</a></p>
+
+<hr>
+
+<h1>개인정보처리방침 — RTK Router (한국어)</h1>
+<p class="updated">최종 수정: 2026-06-05</p>
+
+<p>RTK Router(이하 "앱")는 인터넷의 NTRIP caster 로부터 RTK 보정정보(RTCM3)를 받아 USB 로 연결된
+GNSS 수신기에 전달하는 Android 유틸리티입니다. 개발자는 별도의 서버를 운영하지 않으며 개인정보를
+수집하지 않습니다.</p>
+
+<h2>앱이 다루는 데이터</h2>
+<ul>
+  <li><strong>NTRIP 자격증명(host/port/id/pw)</strong>: 사용자가 입력하며 <strong>기기 내부에만
+      저장</strong>됩니다. 사용자가 설정한 caster 에 접속 인증 목적으로만 전송되고, 개발자는 받지 않습니다.</li>
+  <li><strong>위치(NMEA GGA)</strong>: USB 수신기에서 읽어, VRS caster 의 경우 보정 생성을 위해
+      사용자가 설정한 caster 로만 업로드됩니다. 개발자는 받지 않습니다.</li>
+  <li><strong>수신기 데이터(NMEA)</strong>: USB 로 읽어 화면 표시(fix 상태·위성·위치). 기기 내에서만 처리.</li>
+</ul>
+
+<h2>수집하지 않는 것</h2>
+<ul>
+  <li>개인정보 일절 수집 안 함. 개발자 서버·분석·광고·추적 <strong>없음</strong>.</li>
+  <li><strong>위치(GPS) 권한 요청 안 함</strong>. VRS 위치는 폰이 아닌 수신기에서 옴.</li>
+</ul>
+
+<h2>제3자</h2>
+<ul>
+  <li><strong>사용자가 설정한 NTRIP caster</strong>: 그 제공자 정책 적용. 신뢰하는 caster 사용 권장.</li>
+  <li><strong>OpenStreetMap</strong>: 이동경로 지도 타일을 OSM 서버에서 로드하며 타일 요청 시 IP 가 노출됩니다.</li>
+</ul>
+
+<h2>권한</h2>
+<p>인터넷/네트워크 상태(caster 접속), USB host(수신기 통신), foreground service+알림(스트림 유지·상태).</p>
+
+<h2>문의</h2>
+<p><a href="mailto:pauljiwon96@gmail.com">pauljiwon96@gmail.com</a></p>
+
+</body>
+</html>
