@@ -420,7 +420,7 @@ class RtkService : LifecycleService() {
             .setContentIntent(pi)
             .setOngoing(true)
             .build()
-        ServiceCompat.startForeground(this, NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        ServiceCompat.startForeground(this, NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
     }
 
     override fun onDestroy() {

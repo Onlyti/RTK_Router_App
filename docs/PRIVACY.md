@@ -36,7 +36,7 @@ any server and does not collect personal data.
 
 - Internet / network state: connect to your NTRIP caster.
 - USB host: communicate with the connected GNSS receiver.
-- Foreground service (data sync) + notifications: keep the correction stream running and
+- Foreground service (connected device) + notifications: keep the correction stream running and
   show its status.
 
 ## Children
