@@ -27,38 +27,64 @@ NTRIP caster ──RTCM3/TCP──▶ [폰 NTRIP client] ──▶ [USB serial T
 | M4 | 안정화 | GGA(VRS) 역방향 + 상태 UI + 자동 재연결 |
 | M5 | 운영 | 수신기 프로파일 다중 + 세션 로깅 |
 
-## 빌드 / 실행
+## 설치 (Installation) — Desktop (Linux/Windows)
+
+> Android 는 APK/AAB 설치(아래 "개발 / 빌드").
+
+### A. 받아서 설치 (prebuilt, 권장)
+GitHub [Releases](https://github.com/Onlyti/RTK_Router_App/releases) 에서 받는다:
+Linux `rtk-router_<버전>_amd64.deb`, Windows `rtk-router-<버전>.msi`, Android `app-release.apk`.
+
+Linux:
+```bash
+sudo apt install ./rtk-router_<버전>_amd64.deb     # 의존성 자동. (dpkg -i 후 apt -f install 도 가능)
+```
+- `.deb` 는 **설치 패키지**다. `./*.deb` 로 직접 실행하면 셸이 아카이브를 파싱해
+  `syntax error near unexpected token 'newline'` / `` `!<arch>' `` 에러가 난다 → 반드시 install 명령.
+- `/opt/rtk-router/` 에 설치되고 `/usr/local/bin/rtk-router`(+`rtk-router-cli`) symlink 가
+  자동 생성되어 PATH 로 바로 실행된다(제거 시 정리).
+
+### B. 소스에서 빌드해 설치 (서버 / 헤드리스)
+Releases 를 못 쓰거나 서버에서 직접 빌드할 때. JDK 17 만 있으면 된다(없으면 sudo 없이 홈에 받음):
+```bash
+git clone https://github.com/Onlyti/RTK_Router_App.git rtk-router && cd rtk-router
+
+# JDK17 확보 (이미 있으면 생략)
+if ! ~/.jdks/jdk-17/bin/javac -version 2>/dev/null; then
+  mkdir -p ~/.jdks && ( cd ~/.jdks &&
+    curl -fsSL -o jdk17.tgz "https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse" &&
+    tar xzf jdk17.tgz && mv jdk-17* jdk-17 && rm jdk17.tgz )
+fi
+
+# .deb 빌드 → 설치
+JAVA_HOME=~/.jdks/jdk-17 ./gradlew :desktopApp:packageReleaseDeb \
+  -Porg.gradle.java.installations.paths=$HOME/.jdks/jdk-17 --no-daemon
+sudo apt install -y ./desktopApp/build/compose/binaries/main-release/deb/rtk-router_*_amd64.deb
+```
+
+### C. 실행
+- GUI: 앱 메뉴 "RTK Router" 또는 터미널 `rtk-router`.
+- 헤드리스(서버): `rtk-router-cli` — GUI 가 저장한 `~/.config/rtk-router/settings.json` 을 읽어 실행.
+  ```bash
+  rtk-router-cli                 # 기본 설정 경로. -c <path> 로 지정, --help 참고
+  ```
+  설정 JSON 은 GUI 로 한번 만들어(자동 저장) 서버에 복사하거나 직접 작성한다.
+- ROS `/rtcm` 출력 모드는 [ros/README.md](ros/README.md) 참고 (ROS source 된 환경에서 실행).
+- 제거: `sudo apt remove rtk-router`.
+
+플랫폼별 상세(시리얼 권한·Windows 단축아이콘·디바이스 포트/baud): [desktopApp/README.md](desktopApp/README.md).
+
+## 개발 / 빌드
 
 ### Android
 - APK: `./gradlew assembleDebug` — 산출물 `app/build/outputs/apk/debug/`.
 - 폰: NTRIP 설정(host/port/mount/auth) 입력 → USB 수신기 연결(OTG) → baud 선택 → START.
 
 ### Desktop (Linux & Windows)
-- 실행: `./gradlew :desktopApp:run` (JDK 17)
-- Linux: `/dev/ttyACM0`, `/dev/ttyUSB0` — 시리얼 권한은 앱 내 pkexec/sudo 또는 `dialout` 그룹
-- Windows: `COM*` 포트 선택 (드라이버 설치 후)
-- 릴리즈: 태그 `v*` push → GitHub Release에 APK/AAB + `.deb` + `.msi` 자동 첨부
+- dev 실행: `./gradlew :desktopApp:run` (JDK 17)
 - 로컬 패키지: `./gradlew :desktopApp:packageReleaseDeb` (Linux) / `packageReleaseMsi` (Windows)
-- 상세: [desktopApp/README.md](desktopApp/README.md)
-
-#### Linux `.deb` 설치 / 실행
-`.deb` 는 실행 파일이 아니라 **설치 패키지**다. `./rtk-router_*.deb` 처럼 직접 실행하면
-셸이 아카이브를 스크립트로 해석해 `syntax error near unexpected token 'newline'` /
-`` `!<arch>' `` 에러가 난다(이건 정상 동작 — 설치 명령을 써야 한다).
-```bash
-sudo apt install ./rtk-router_1.0.6-1_amd64.deb     # 권장 (의존성 자동 처리)
-#   또는
-sudo dpkg -i rtk-router_1.0.6-1_amd64.deb
-sudo apt -f install                                  # dpkg 가 의존성 부족 시 보충
-```
-설치 본체는 `/opt/rtk-router/` 에 들어가고, 설치 시 `/usr/local/bin/rtk-router` 심볼릭이
-자동 생성되어 PATH 로 바로 실행된다(제거 시 자동 정리). GUI 데스크톱이면 애플리케이션 메뉴의
-"RTK Router" 로도 실행된다:
-```bash
-rtk-router                                           # 설치 후 PATH 로 실행
-#   (전체 경로: /opt/rtk-router/bin/rtk-router)
-sudo apt remove rtk-router                            # 제거
-```
+- 릴리즈: 태그 `v*` push → GitHub Release 에 APK/AAB + `.deb` + `.msi` 자동 첨부
+- Linux 시리얼 권한은 앱 내 pkexec/sudo 또는 `dialout` 그룹 — 상세 [desktopApp/README.md](desktopApp/README.md)
 
 ### ROS1 `/rtcm` 출력 (u-blox)
 Connection 모드에 `ROS /rtcm (u-blox)` 가 있다. 선택 후 START 하면 앱이 번들된 rospy 노드를
