@@ -38,7 +38,9 @@ class RtkBridge {
     )
     private var serialDevicePath: String = ""
     private var serial: SerialLink? = null
-    private var rtcmTcpServer: RtcmTcpServer? = null
+    private var rosPublisher: RosRtcmPublisher? = null
+    @Volatile private var rosNodeAlive = false
+    @Volatile private var rosNodeMessage = ""
     @Volatile private var wantsRun = false
     @Volatile private var lastGgaMs = 0L
     @Volatile private var healthLevel = "ok"
@@ -102,31 +104,43 @@ class RtkBridge {
 
         statusJob = scope.launch { statusLoop() }
         scope.launch(Dispatchers.IO) {
-            val haveSerial = serialOptions.devicePath.isNotBlank()
-            if (haveSerial) {
+            if (serialOptions.mode == SerialConnectionMode.ROS_RTCM) {
+                if (!startRosNode()) return@launch
+            } else {
+                if (serialOptions.devicePath.isBlank()) {
+                    error = ErrorInfo("Config", "L0", "시리얼 포트를 선택하세요")
+                    detail = "출력 대상 없음 — 포트 선택"
+                    wantsRun = false
+                    return@launch
+                }
                 if (!prepareAndOpenSerial()) return@launch
-            } else if (!config.rtcmTcpOutEnabled) {
-                error = ErrorInfo("Config", "L0", "시리얼 포트도 ROS/TCP 출력도 없음")
-                detail = "출력 대상 없음 — 포트 선택 또는 ROS/TCP 출력 ON"
-                wantsRun = false
-                return@launch
             }
-            // RTCM-only-to-ROS mode (serial-less): used when ublox_gps owns the receiver port.
-            if (config.rtcmTcpOutEnabled) startRtcmTcpOut()
             resolveAndConnectNtrip()
         }
     }
 
-    private fun startRtcmTcpOut() {
-        val srv = RtcmTcpServer(config.rtcmTcpOutPort)
-        val err = srv.start()
-        if (err != null) {
-            healthLevel = "warn"
-            healthMessage = err
-            return
+    private fun startRosNode(): Boolean {
+        val pub = RosRtcmPublisher(config.rosTopic, config.rosFrameId) { alive, msg ->
+            rosNodeAlive = alive
+            rosNodeMessage = msg
+            if (!alive && wantsRun) {
+                healthLevel = "error"
+                healthMessage = msg
+            }
         }
-        rtcmTcpServer = srv
-        if (!serialConnected) detail = "RTCM → TCP :${config.rtcmTcpOutPort} (ROS 브리지 대기)"
+        val err = pub.start()
+        if (err != null) {
+            healthLevel = "error"
+            healthMessage = err
+            error = ErrorInfo("ROS", "L0", err)
+            detail = err
+            wantsRun = false
+            return false
+        }
+        rosPublisher = pub
+        rosNodeAlive = true
+        detail = "ROS 노드 실행: ${config.rosTopic} (master 연결 대기)"
+        return true
     }
 
     fun stop() {
@@ -139,8 +153,9 @@ class RtkBridge {
         streams = emptyList()
         serial?.close()
         serial = null
-        rtcmTcpServer?.stop()
-        rtcmTcpServer = null
+        rosPublisher?.stop()
+        rosPublisher = null
+        rosNodeAlive = false
         RtkState.reset()
     }
 
@@ -333,7 +348,7 @@ class RtkBridge {
         if (s.id == activeStreamId) {
             lastRtcmAtMs = s.lastDataMs
             serial?.write(buf, n)
-            rtcmTcpServer?.broadcast(buf, n)
+            rosPublisher?.write(buf, n)
         }
     }
 
@@ -483,9 +498,10 @@ class RtkBridge {
                     trajectory = track.map { it.second },
                     healthLevel = healthLevel,
                     healthMessage = healthMessage,
-                    rtcmTcpOutEnabled = rtcmTcpServer != null,
-                    rtcmTcpPort = config.rtcmTcpOutPort,
-                    rtcmTcpClients = rtcmTcpServer?.clientCount ?: 0,
+                    rosActive = rosPublisher != null,
+                    rosTopic = config.rosTopic,
+                    rosNodeAlive = rosNodeAlive,
+                    rosNodeMessage = rosNodeMessage,
                 ),
             )
             delay(500)

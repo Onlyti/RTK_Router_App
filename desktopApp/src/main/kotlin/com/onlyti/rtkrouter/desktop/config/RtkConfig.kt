@@ -56,12 +56,12 @@ data class RtkConfig(
     val autoReconnect: Boolean = true,
     val showDataUsage: Boolean = true,
     /**
-     * Opt-in (default off): mirror the relayed RTCM3 byte stream to a local TCP server so the
-     * standalone ROS bridge (ros/rtcm_tcp_bridge.py) can republish it as rtcm_msgs/Message on
-     * /rtcm. Pure-JVM sockets — no ROS dependency in this app. See ros/README.md.
+     * ROS connection mode (SerialConnectionMode.ROS_RTCM) settings. On START the app spawns the
+     * bundled rospy node which publishes rtcm_msgs/Message on [rosTopic]. No ROS dependency in
+     * this app build — the node is only launched in ROS mode. See ros/README.md.
      */
-    val rtcmTcpOutEnabled: Boolean = false,
-    val rtcmTcpOutPort: Int = 8531,
+    val rosTopic: String = "/rtcm",
+    val rosFrameId: String = "",
     val fallbackStations: List<BaseStation> = emptyList(),
     val failover: FailoverPolicy = FailoverPolicy(),
 ) {

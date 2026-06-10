@@ -147,8 +147,6 @@ private fun DesktopScreen(vm: DesktopViewModel, settings: DesktopSettings, statu
             }
         }
 
-        RosOutputSection(vm, config, running = status.running)
-
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = vm::start, enabled = !status.running) { Text("START") }
             Button(onClick = vm::stop, enabled = status.running) { Text("STOP") }
@@ -187,6 +185,7 @@ private fun SerialPortSection(
                     value = when (settings.connectionMode) {
                         SerialConnectionMode.RS232 -> "RS232 (USB-UART / adapter)"
                         SerialConnectionMode.NOVATEL_USB -> "NovAtel USB (multi-COM)"
+                        SerialConnectionMode.ROS_RTCM -> "ROS /rtcm (u-blox)"
                     },
                     onValueChange = {},
                     readOnly = true,
@@ -210,6 +209,13 @@ private fun SerialPortSection(
                             modeExpanded = false
                         },
                     )
+                    DropdownMenuItem(
+                        text = { Text("ROS /rtcm (u-blox)") },
+                        onClick = {
+                            vm.setConnectionMode(SerialConnectionMode.ROS_RTCM)
+                            modeExpanded = false
+                        },
+                    )
                 }
             }
 
@@ -222,65 +228,96 @@ private fun SerialPortSection(
                 )
             }
 
-            ExposedDropdownMenuBox(
-                expanded = portExpanded,
-                onExpandedChange = { if (!running) portExpanded = it },
-            ) {
-                OutlinedTextField(
-                    value = selectedPath.ifBlank { "(select port)" },
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = portExpanded) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
-                    label = { Text(if (settings.connectionMode == SerialConnectionMode.RS232) Platform.serialPortHint else "NovAtel COM port") },
-                    enabled = !running,
-                )
-                ExposedDropdownMenu(expanded = portExpanded, onDismissRequest = { portExpanded = false }) {
-                    if (portEntries.isEmpty()) {
-                        DropdownMenuItem(
-                            text = { Text("no matching ports — check mode & USB cable") },
-                            onClick = { portExpanded = false },
-                        )
-                    } else {
-                        for (p in portEntries) {
+            if (settings.connectionMode == SerialConnectionMode.ROS_RTCM) {
+                RosSettings(vm, settings.config, running)
+            } else {
+                ExposedDropdownMenuBox(
+                    expanded = portExpanded,
+                    onExpandedChange = { if (!running) portExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = selectedPath.ifBlank { "(select port)" },
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = portExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        label = { Text(if (settings.connectionMode == SerialConnectionMode.RS232) Platform.serialPortHint else "NovAtel COM port") },
+                        enabled = !running,
+                    )
+                    ExposedDropdownMenu(expanded = portExpanded, onDismissRequest = { portExpanded = false }) {
+                        if (portEntries.isEmpty()) {
                             DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        PortLed(p.availability)
-                                        Text(p.displayLabel, modifier = Modifier.padding(start = 8.dp))
-                                    }
-                                },
-                                onClick = {
-                                    vm.setSerialDevicePath(p.systemPortName)
-                                    portExpanded = false
-                                },
+                                text = { Text("no matching ports — check mode & USB cable") },
+                                onClick = { portExpanded = false },
                             )
+                        } else {
+                            for (p in portEntries) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            PortLed(p.availability)
+                                            Text(p.displayLabel, modifier = Modifier.padding(start = 8.dp))
+                                        }
+                                    },
+                                    onClick = {
+                                        vm.setSerialDevicePath(p.systemPortName)
+                                        portExpanded = false
+                                    },
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            if (portEntries.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (p in portEntries) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            PortLed(p.availability)
-                            Text(
-                                "${p.displayLabel} — ${portAvailabilityLabel(p.availability)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
+                if (portEntries.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (p in portEntries) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                PortLed(p.availability)
+                                Text(
+                                    "${p.displayLabel} — ${portAvailabilityLabel(p.availability)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            Platform.serialPermissionHint?.let { hint ->
-                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                Platform.serialPermissionHint?.let { hint ->
+                    Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun RosSettings(vm: DesktopViewModel, config: RtkConfig, running: Boolean) {
+    OutlinedTextField(
+        value = config.rosTopic,
+        onValueChange = { vm.setRosTopic(it) },
+        label = { Text("ROS topic") },
+        singleLine = true,
+        enabled = !running,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = config.rosFrameId,
+        onValueChange = { vm.setRosFrameId(it) },
+        label = { Text("frame_id (비워도 됨)") },
+        singleLine = true,
+        enabled = !running,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        "START 시 앱이 rospy 노드를 띄워 RTCM3 를 ${config.rosTopic} 로 publish 합니다. " +
+            "ROS master(ROS_MASTER_URI)·rospy·rtcm_msgs 가 보이도록 ROS source 된 터미널에서 앱을 실행하세요. " +
+            "ublox_gps 가 이 토픽을 subscribe → M8P RTK fix.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.outline,
+    )
 }
 
 @Composable
@@ -439,43 +476,6 @@ private fun ScanSection(vm: DesktopViewModel) {
 }
 
 @Composable
-private fun RosOutputSection(vm: DesktopViewModel, config: RtkConfig, running: Boolean) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "ROS /rtcm 출력 (TCP 미러)",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = config.rtcmTcpOutEnabled,
-                    onCheckedChange = { vm.setRtcmTcpOutEnabled(it) },
-                    enabled = !running,
-                )
-            }
-            Text(
-                "ON 이면 수신한 RTCM3 스트림을 로컬 TCP(:${config.rtcmTcpOutPort})로 미러링. " +
-                    "ros/rtcm_tcp_bridge.py 가 접속해 /rtcm (rtcm_msgs/Message) 으로 publish 합니다. " +
-                    "시리얼 포트를 비워두면 TCP 전용으로 동작 (ublox_gps 가 수신기 포트를 단독 점유하는 환경).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            if (config.rtcmTcpOutEnabled) {
-                OutlinedTextField(
-                    value = config.rtcmTcpOutPort.toString(),
-                    onValueChange = { vm.setRtcmTcpOutPort(it) },
-                    label = { Text("TCP port") },
-                    singleLine = true,
-                    enabled = !running,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun StatusCard(s: RtkStatus, showDataUsage: Boolean, onResetUsage: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -488,9 +488,13 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean, onResetUsage: () ->
                 )
             }
             line("NTRIP", if (s.ntripConnected) "connected" else "down")
-            line("Serial", if (s.serialConnected) s.deviceName else "down")
-            if (s.rtcmTcpOutEnabled) {
-                line("ROS/TCP out", ":${s.rtcmTcpPort} · ${s.rtcmTcpClients} client(s)")
+            if (s.rosActive) {
+                line("ROS node", if (s.rosNodeAlive) "running → ${s.rosTopic}" else "stopped")
+                if (s.rosNodeMessage.isNotBlank()) {
+                    Text(s.rosNodeMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                }
+            } else {
+                line("Serial", if (s.serialConnected) s.deviceName else "down")
             }
             line("Provider/Mount", "${s.activeProfileName} / ${s.activeMount.ifBlank { "-" }}")
             line("Mode / GGA", "${s.activeMode.ifBlank { "-" }} / ${if (s.ggaActive) "on" else "off"}")

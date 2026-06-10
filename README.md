@@ -46,24 +46,25 @@ NTRIP caster ──RTCM3/TCP──▶ [폰 NTRIP client] ──▶ [USB serial T
 셸이 아카이브를 스크립트로 해석해 `syntax error near unexpected token 'newline'` /
 `` `!<arch>' `` 에러가 난다(이건 정상 동작 — 설치 명령을 써야 한다).
 ```bash
-sudo apt install ./rtk-router_1.0.5-1_amd64.deb     # 권장 (의존성 자동 처리)
+sudo apt install ./rtk-router_1.0.6-1_amd64.deb     # 권장 (의존성 자동 처리)
 #   또는
-sudo dpkg -i rtk-router_1.0.5-1_amd64.deb
+sudo dpkg -i rtk-router_1.0.6-1_amd64.deb
 sudo apt -f install                                  # dpkg 가 의존성 부족 시 보충
 ```
-설치 위치는 `/opt/rtk-router/` 이고 `/usr/bin` 에 자동 등록되지 않는다(PATH 에 없음).
-GUI 데스크톱이면 애플리케이션 메뉴의 "RTK Router" 로 실행, 터미널이면 전체 경로로 실행한다:
+설치 본체는 `/opt/rtk-router/` 에 들어가고, 설치 시 `/usr/local/bin/rtk-router` 심볼릭이
+자동 생성되어 PATH 로 바로 실행된다(제거 시 자동 정리). GUI 데스크톱이면 애플리케이션 메뉴의
+"RTK Router" 로도 실행된다:
 ```bash
-/opt/rtk-router/bin/rtk-router                       # 설치 후 실행 (전체 경로)
-#   매번 'rtk-router' 로 부르고 싶으면 심볼릭 한 번:
-sudo ln -sf /opt/rtk-router/bin/rtk-router /usr/local/bin/rtk-router
+rtk-router                                           # 설치 후 PATH 로 실행
+#   (전체 경로: /opt/rtk-router/bin/rtk-router)
 sudo apt remove rtk-router                            # 제거
 ```
 
-### ROS1 `/rtcm` 출력 (선택)
-데스크톱(Linux) 앱은 수신 RTCM3 스트림을 ROS1 토픽(`rtcm_msgs/Message`, 기본 `/rtcm`)으로
-내보낼 수 있다(앱 내 "ROS /rtcm 출력" 스위치, 기본 off). 본체는 ROS 의존성이 없고, 분리된
-브리지 노드만 ROS 를 안다. ublox_gps 등 `/rtcm` 을 subscribe 하는 드라이버에 보정 주입용.
+### ROS1 `/rtcm` 출력 (u-blox)
+Connection 모드에 `ROS /rtcm (u-blox)` 가 있다. 선택 후 START 하면 앱이 번들된 rospy 노드를
+띄워 수신 RTCM3 를 `rtcm_msgs/Message`(기본 `/rtcm`)로 떠 있는 ROS master 에 publish 한다.
+본체는 ROS 의존성이 없고(ROS 모드일 때만 `python3` 실행), rospy 가 ROS 프로토콜을 처리한다.
+`ublox_gps` 등이 `/rtcm` 을 subscribe → M8P RTK fix. 앱은 ROS source 된 터미널에서 실행할 것.
 상세·검증: [ros/README.md](ros/README.md)
 
 ## 참조

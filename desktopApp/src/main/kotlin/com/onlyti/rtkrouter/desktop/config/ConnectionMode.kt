@@ -8,4 +8,10 @@ enum class SerialConnectionMode {
     RS232,
     /** NovAtel OEM7 USB CDC ports only; auto INTERFACEMODE + LOG GPGGA on START. */
     NOVATEL_USB,
+
+    /**
+     * No local serial. On START, spawn the bundled rospy node and pipe RTCM3 to it; the node
+     * publishes rtcm_msgs/Message on the topic for a ROS driver (e.g. ublox_gps on u-blox).
+     */
+    ROS_RTCM,
 }

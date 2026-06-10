@@ -8,6 +8,7 @@ object SerialPortScanner {
     private const val PROBE_BAUD = 9600
 
     fun scan(mode: SerialConnectionMode): List<PortScanEntry> {
+        if (mode == SerialConnectionMode.ROS_RTCM) return emptyList()  // no local serial in ROS mode
         val raw = SerialPort.getCommPorts().map { p ->
             Triple(p, isNovAtelPort(p), portSortKey(p.systemPortPath))
         }
@@ -18,6 +19,7 @@ object SerialPortScanner {
                 when (mode) {
                     SerialConnectionMode.RS232 -> !isNov
                     SerialConnectionMode.NOVATEL_USB -> isNov
+                    SerialConnectionMode.ROS_RTCM -> false
                 }
             }
             .sortedBy { it.third }
