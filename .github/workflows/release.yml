@@ -22,7 +22,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install SDK packages
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -96,6 +96,9 @@ jobs:
           path: desktopApp/build/compose/binaries/main-release/msi/*.msi
 
   publish:
+    # Only publish a GitHub Release on tag pushes. A manual run (workflow_dispatch)
+    # still builds the APK/AAB/.deb/.msi as downloadable artifacts without releasing.
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [android, desktop-linux, desktop-windows]
     runs-on: ubuntu-latest
     permissions:

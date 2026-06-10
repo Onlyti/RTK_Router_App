@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.onlyti.rtkrouter"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.onlyti.rtkrouter"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 8
         versionName = "1.0.7"
 
