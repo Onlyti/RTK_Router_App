@@ -46,6 +46,17 @@ compose.desktop {
                 // Stable MSI product id for in-place upgrades.
                 upgradeUuid = "c4e8f2a1-9b3d-4f6e-a812-0d5e7b9c3f21"
             }
+
+            linux {
+                // Compose emits "Maintainer: <vendor> <debMaintainer>", so debMaintainer must be
+                // the EMAIL ONLY. An unset/badly-formatted value yields a malformed Maintainer
+                // (e.g. nested "<>" or missing email) that dpkg rejects on install
+                // ("'Maintainer' field, ... found newline"). Email-only -> "onlyti <pauljiwon96@gmail.com>".
+                debMaintainer = "pauljiwon96@gmail.com"
+                menuGroup = "RTK Router"
+                appCategory = "Science"
+                shortcut = true
+            }
         }
     }
 }

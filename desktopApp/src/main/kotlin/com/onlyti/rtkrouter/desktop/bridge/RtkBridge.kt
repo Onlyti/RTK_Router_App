@@ -38,6 +38,7 @@ class RtkBridge {
     )
     private var serialDevicePath: String = ""
     private var serial: SerialLink? = null
+    private var rtcmTcpServer: RtcmTcpServer? = null
     @Volatile private var wantsRun = false
     @Volatile private var lastGgaMs = 0L
     @Volatile private var healthLevel = "ok"
@@ -101,9 +102,31 @@ class RtkBridge {
 
         statusJob = scope.launch { statusLoop() }
         scope.launch(Dispatchers.IO) {
-            if (!prepareAndOpenSerial()) return@launch
+            val haveSerial = serialOptions.devicePath.isNotBlank()
+            if (haveSerial) {
+                if (!prepareAndOpenSerial()) return@launch
+            } else if (!config.rtcmTcpOutEnabled) {
+                error = ErrorInfo("Config", "L0", "시리얼 포트도 ROS/TCP 출력도 없음")
+                detail = "출력 대상 없음 — 포트 선택 또는 ROS/TCP 출력 ON"
+                wantsRun = false
+                return@launch
+            }
+            // RTCM-only-to-ROS mode (serial-less): used when ublox_gps owns the receiver port.
+            if (config.rtcmTcpOutEnabled) startRtcmTcpOut()
             resolveAndConnectNtrip()
         }
+    }
+
+    private fun startRtcmTcpOut() {
+        val srv = RtcmTcpServer(config.rtcmTcpOutPort)
+        val err = srv.start()
+        if (err != null) {
+            healthLevel = "warn"
+            healthMessage = err
+            return
+        }
+        rtcmTcpServer = srv
+        if (!serialConnected) detail = "RTCM → TCP :${config.rtcmTcpOutPort} (ROS 브리지 대기)"
     }
 
     fun stop() {
@@ -116,6 +139,8 @@ class RtkBridge {
         streams = emptyList()
         serial?.close()
         serial = null
+        rtcmTcpServer?.stop()
+        rtcmTcpServer = null
         RtkState.reset()
     }
 
@@ -308,6 +333,7 @@ class RtkBridge {
         if (s.id == activeStreamId) {
             lastRtcmAtMs = s.lastDataMs
             serial?.write(buf, n)
+            rtcmTcpServer?.broadcast(buf, n)
         }
     }
 
@@ -457,6 +483,9 @@ class RtkBridge {
                     trajectory = track.map { it.second },
                     healthLevel = healthLevel,
                     healthMessage = healthMessage,
+                    rtcmTcpOutEnabled = rtcmTcpServer != null,
+                    rtcmTcpPort = config.rtcmTcpOutPort,
+                    rtcmTcpClients = rtcmTcpServer?.clientCount ?: 0,
                 ),
             )
             delay(500)

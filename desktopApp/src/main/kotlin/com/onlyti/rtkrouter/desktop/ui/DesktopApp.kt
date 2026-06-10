@@ -147,6 +147,8 @@ private fun DesktopScreen(vm: DesktopViewModel, settings: DesktopSettings, statu
             }
         }
 
+        RosOutputSection(vm, config, running = status.running)
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = vm::start, enabled = !status.running) { Text("START") }
             Button(onClick = vm::stop, enabled = status.running) { Text("STOP") }
@@ -437,6 +439,43 @@ private fun ScanSection(vm: DesktopViewModel) {
 }
 
 @Composable
+private fun RosOutputSection(vm: DesktopViewModel, config: RtkConfig, running: Boolean) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "ROS /rtcm 출력 (TCP 미러)",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = config.rtcmTcpOutEnabled,
+                    onCheckedChange = { vm.setRtcmTcpOutEnabled(it) },
+                    enabled = !running,
+                )
+            }
+            Text(
+                "ON 이면 수신한 RTCM3 스트림을 로컬 TCP(:${config.rtcmTcpOutPort})로 미러링. " +
+                    "ros/rtcm_tcp_bridge.py 가 접속해 /rtcm (rtcm_msgs/Message) 으로 publish 합니다. " +
+                    "시리얼 포트를 비워두면 TCP 전용으로 동작 (ublox_gps 가 수신기 포트를 단독 점유하는 환경).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            if (config.rtcmTcpOutEnabled) {
+                OutlinedTextField(
+                    value = config.rtcmTcpOutPort.toString(),
+                    onValueChange = { vm.setRtcmTcpOutPort(it) },
+                    label = { Text("TCP port") },
+                    singleLine = true,
+                    enabled = !running,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatusCard(s: RtkStatus, showDataUsage: Boolean, onResetUsage: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -450,6 +489,9 @@ private fun StatusCard(s: RtkStatus, showDataUsage: Boolean, onResetUsage: () ->
             }
             line("NTRIP", if (s.ntripConnected) "connected" else "down")
             line("Serial", if (s.serialConnected) s.deviceName else "down")
+            if (s.rtcmTcpOutEnabled) {
+                line("ROS/TCP out", ":${s.rtcmTcpPort} · ${s.rtcmTcpClients} client(s)")
+            }
             line("Provider/Mount", "${s.activeProfileName} / ${s.activeMount.ifBlank { "-" }}")
             line("Mode / GGA", "${s.activeMode.ifBlank { "-" }} / ${if (s.ggaActive) "on" else "off"}")
             line("Failover", s.failoverLevel)

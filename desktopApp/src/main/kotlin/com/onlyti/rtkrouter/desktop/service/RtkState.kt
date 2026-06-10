@@ -43,6 +43,9 @@ data class RtkStatus(
     /** ok | warn (orange) | error */
     val healthLevel: String = "ok",
     val healthMessage: String = "",
+    val rtcmTcpOutEnabled: Boolean = false,
+    val rtcmTcpPort: Int = 0,
+    val rtcmTcpClients: Int = 0,
 )
 
 data class GeoPt(val lat: Double, val lon: Double)

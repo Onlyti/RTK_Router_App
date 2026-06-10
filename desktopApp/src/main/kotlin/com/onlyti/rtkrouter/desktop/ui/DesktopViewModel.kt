@@ -156,6 +156,10 @@ class DesktopViewModel {
     fun setBaud(v: Int) = updateConfig { it.copy(baud = v) }
     fun setHotStandbyCount(v: Int) = updateConfig { it.copy(hotStandbyCount = v) }
     fun setEndpointMode(m: EndpointMode) = updateConfig { it.copy(endpointMode = m) }
+    fun setRtcmTcpOutEnabled(v: Boolean) = updateConfig { it.copy(rtcmTcpOutEnabled = v) }
+    fun setRtcmTcpOutPort(v: String) = updateConfig {
+        it.copy(rtcmTcpOutPort = v.trim().toIntOrNull()?.coerceIn(1, 65535) ?: it.rtcmTcpOutPort)
+    }
 
     fun scanEndpoints() {
         val profile = _settings.value.config.activeProfile
@@ -187,7 +191,16 @@ class DesktopViewModel {
         val s = _settings.value
         val path = s.serialDevicePath
         if (path.isBlank()) {
-            showMessage("시리얼 포트를 선택하세요.")
+            // Serial-less mode is allowed only as a pure ROS/TCP RTCM source
+            // (e.g. ublox_gps owns the receiver port on the mapping PC).
+            if (s.config.rtcmTcpOutEnabled) {
+                bridge.start(
+                    s.config,
+                    SerialConnectOptions(mode = s.connectionMode, devicePath = "", baud = s.config.baud),
+                )
+                return
+            }
+            showMessage("시리얼 포트를 선택하거나, ROS /rtcm (TCP) 출력을 켜세요.")
             return
         }
         val entry = _portEntries.value.find { it.systemPortName == path }
