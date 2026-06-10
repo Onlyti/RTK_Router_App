@@ -10,6 +10,11 @@
     <!-- Continuous communication with the USB-connected GNSS receiver. connectedDevice has no
          Android 15 6h cap (dataSync does), so long RTK sessions are not killed. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- A dependency merges in FOREGROUND_SERVICE_DATA_SYNC; we never start a dataSync
+         foreground service (our only FGS is connectedDevice), so strip it from the merged
+         manifest to avoid declaring an unused foreground-service permission on Play. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:node="remove" />
 
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
