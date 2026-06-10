@@ -41,6 +41,27 @@ NTRIP caster ──RTCM3/TCP──▶ [폰 NTRIP client] ──▶ [USB serial T
 - 로컬 패키지: `./gradlew :desktopApp:packageReleaseDeb` (Linux) / `packageReleaseMsi` (Windows)
 - 상세: [desktopApp/README.md](desktopApp/README.md)
 
+#### Linux `.deb` 설치 / 실행
+`.deb` 는 실행 파일이 아니라 **설치 패키지**다. `./rtk-router_*.deb` 처럼 직접 실행하면
+셸이 아카이브를 스크립트로 해석해 `syntax error near unexpected token 'newline'` /
+`` `!<arch>' `` 에러가 난다(이건 정상 동작 — 설치 명령을 써야 한다).
+```bash
+sudo apt install ./rtk-router_1.0.4-1_amd64.deb     # 권장 (의존성 자동 처리)
+#   또는
+sudo dpkg -i rtk-router_1.0.4-1_amd64.deb
+sudo apt -f install                                  # dpkg 가 의존성 부족 시 보충
+
+rtk-router                                           # 설치 후 실행 (PATH 등록됨)
+#   또는 /opt/rtk-router/bin/rtk-router
+sudo apt remove rtk-router                            # 제거
+```
+
+### ROS1 `/rtcm` 출력 (선택)
+데스크톱(Linux) 앱은 수신 RTCM3 스트림을 ROS1 토픽(`rtcm_msgs/Message`, 기본 `/rtcm`)으로
+내보낼 수 있다(앱 내 "ROS /rtcm 출력" 스위치, 기본 off). 본체는 ROS 의존성이 없고, 분리된
+브리지 노드만 ROS 를 안다. ublox_gps 등 `/rtcm` 을 subscribe 하는 드라이버에 보정 주입용.
+상세·검증: [ros/README.md](ros/README.md)
+
 ## 참조
 - phone-sensor-stream: 같은 Kotlin/Compose 스택, USB/GNSS(gnsstest) 코드 재사용 후보.
 - NovAtel: RTKASSIST / RTCM 입력 포트 문서. u-blox: u-center, UBX-CFG.
