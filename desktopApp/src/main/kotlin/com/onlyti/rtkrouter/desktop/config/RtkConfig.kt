@@ -62,6 +62,13 @@ data class RtkConfig(
      */
     val rosTopic: String = "/rtcm",
     val rosFrameId: String = "",
+    /**
+     * VRS GGA feedback (ROS mode): subscribe to the receiver position topic and upload a
+     * synthesized GGA to the caster. Empty [rosFixTopic] = off (VRS won't get corrections).
+     * [rosFixType]: navsatfix (generic sensor_msgs/NavSatFix) | navpvt (ublox) | bestpos (NovAtel) | nmea.
+     */
+    val rosFixTopic: String = "",
+    val rosFixType: String = "navsatfix",
     val fallbackStations: List<BaseStation> = emptyList(),
     val failover: FailoverPolicy = FailoverPolicy(),
 ) {

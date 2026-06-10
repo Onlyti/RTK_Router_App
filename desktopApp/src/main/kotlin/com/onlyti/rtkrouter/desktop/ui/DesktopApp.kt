@@ -294,12 +294,13 @@ private fun SerialPortSection(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RosSettings(vm: DesktopViewModel, config: RtkConfig, running: Boolean) {
     OutlinedTextField(
         value = config.rosTopic,
         onValueChange = { vm.setRosTopic(it) },
-        label = { Text("ROS topic") },
+        label = { Text("ROS topic (RTCM 출력)") },
         singleLine = true,
         enabled = !running,
         modifier = Modifier.fillMaxWidth(),
@@ -313,12 +314,53 @@ private fun RosSettings(vm: DesktopViewModel, config: RtkConfig, running: Boolea
         modifier = Modifier.fillMaxWidth(),
     )
     Text(
-        "START 시 앱이 rospy 노드를 띄워 RTCM3 를 ${config.rosTopic} 로 publish 합니다. " +
-            "ROS master(ROS_MASTER_URI)·rospy·rtcm_msgs 가 보이도록 ROS source 된 터미널에서 앱을 실행하세요. " +
-            "ublox_gps 가 이 토픽을 subscribe → M8P RTK fix.",
+        "START 시 앱이 rospy 노드를 띄워 RTCM3 를 ${config.rosTopic} 로 publish. " +
+            "ROS source 된 터미널에서 앱 실행(rospy/rtcm_msgs/master 필요). ublox_gps 등 → RTK fix.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.outline,
     )
+
+    // VRS GGA feedback: subscribe receiver position -> upload GGA to caster.
+    OutlinedTextField(
+        value = config.rosFixTopic,
+        onValueChange = { vm.setRosFixTopic(it) },
+        label = { Text("수신기 위치 토픽 (VRS용 GGA, 비우면 사용 안 함)") },
+        singleLine = true,
+        enabled = !running,
+        placeholder = { Text("예: /gps/gps, /ublox/fix") },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    if (config.rosFixTopic.isNotBlank()) {
+        var typeExpanded by remember { mutableStateOf(false) }
+        val types = listOf(
+            "navsatfix" to "sensor_msgs/NavSatFix (범용)",
+            "navpvt" to "ublox_msgs/NavPVT (u-blox)",
+            "bestpos" to "novatel_oem7_msgs/BESTPOS (NovAtel)",
+            "nmea" to "nmea_msgs/Sentence (GGA 통과)",
+        )
+        ExposedDropdownMenuBox(expanded = typeExpanded, onExpandedChange = { if (!running) typeExpanded = it }) {
+            OutlinedTextField(
+                value = types.firstOrNull { it.first == config.rosFixType }?.second ?: config.rosFixType,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("위치 메시지 타입") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
+                enabled = !running,
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+            )
+            ExposedDropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
+                for ((k, label) in types) {
+                    DropdownMenuItem(text = { Text(label) }, onClick = { vm.setRosFixType(k); typeExpanded = false })
+                }
+            }
+        }
+        Text(
+            "VRS/면보정 mount 는 rover 위치(GGA)가 있어야 보정이 내려온다. 위 토픽을 subscribe 해 " +
+                "GGA 를 합성·업로드한다. 고정국(single-base) mount 만 쓰면 비워도 된다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+    }
 }
 
 @Composable

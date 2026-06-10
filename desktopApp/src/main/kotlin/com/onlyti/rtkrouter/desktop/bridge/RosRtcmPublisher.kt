@@ -17,8 +17,12 @@ import java.io.OutputStream
 class RosRtcmPublisher(
     private val topic: String,
     private val frameId: String,
+    private val fixTopic: String,
+    private val fixType: String,
     private val onStatus: (alive: Boolean, message: String) -> Unit,
+    private val onGga: (nmea: String) -> Unit,
 ) {
+
     @Volatile private var process: Process? = null
     @Volatile private var stdin: OutputStream? = null
     @Volatile var alive = false
@@ -32,11 +36,16 @@ class RosRtcmPublisher(
         return try {
             val args = mutableListOf("python3", script.absolutePath, "_rtcm_topic:=$topic")
             if (frameId.isNotBlank()) args.add("_frame_id:=$frameId")
+            if (fixTopic.isNotBlank()) {
+                args.add("_fix_topic:=$fixTopic")
+                args.add("_fix_type:=${fixType.ifBlank { "navsatfix" }}")
+            }
             val p = ProcessBuilder(args).redirectErrorStream(false).start()
             process = p
             stdin = p.outputStream
             alive = true
             Thread({ drainStderr(p) }, "ros-node-stderr").apply { isDaemon = true; start() }
+            Thread({ drainStdout(p) }, "ros-node-stdout").apply { isDaemon = true; start() }
             Thread({
                 p.waitFor()
                 alive = false
@@ -81,6 +90,20 @@ class RosRtcmPublisher(
         }
     }
 
+    /** Node feeds synthesized rover GGA on stdout as "@@GGA@@ <nmea>"; everything else ignored. */
+    private fun drainStdout(p: Process) {
+        try {
+            p.inputStream.bufferedReader().forEachLine { line ->
+                val i = line.indexOf(GGA_SENTINEL)
+                if (i >= 0) {
+                    val nmea = line.substring(i + GGA_SENTINEL.length).trim()
+                    if (nmea.startsWith("\$")) onGga(nmea)
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
     private fun extractScript(): File? {
         val res = javaClass.getResourceAsStream("/ros/rtcm_ros_pub.py") ?: return null
         return try {
@@ -104,6 +127,8 @@ class RosRtcmPublisher(
     }
 
     companion object {
+        private const val GGA_SENTINEL = "@@GGA@@"
+
         /** ROS distro from env, defaulting to noetic (the rodea target). */
         fun rosDistro(): String = System.getenv("ROS_DISTRO")?.takeIf { it.isNotBlank() } ?: "noetic"
 

@@ -120,14 +120,21 @@ class RtkBridge {
     }
 
     private fun startRosNode(): Boolean {
-        val pub = RosRtcmPublisher(config.rosTopic, config.rosFrameId) { alive, msg ->
-            rosNodeAlive = alive
-            rosNodeMessage = msg
-            if (!alive && wantsRun) {
-                healthLevel = "error"
-                healthMessage = msg
-            }
-        }
+        val pub = RosRtcmPublisher(
+            topic = config.rosTopic,
+            frameId = config.rosFrameId,
+            fixTopic = config.rosFixTopic,
+            fixType = config.rosFixType,
+            onStatus = { alive, msg ->
+                rosNodeAlive = alive
+                rosNodeMessage = msg
+                if (!alive && wantsRun) {
+                    healthLevel = "error"
+                    healthMessage = msg
+                }
+            },
+            onGga = { nmea -> injectRoverGga(nmea) },
+        )
         val err = pub.start()
         if (err != null) {
             healthLevel = "error"
@@ -372,6 +379,19 @@ class RtkBridge {
                 }
                 nl = nmeaBuf.indexOf("\n")
             }
+        }
+    }
+
+    /**
+     * Rover GGA fed back from the ROS node (VRS support in ROS mode): same path as serial NMEA,
+     * so [ggaForUpload] sends it to the caster and the status/dashboard shows the rover position.
+     */
+    private fun injectRoverGga(nmea: String) {
+        Nmea.parseGga(nmea)?.let { gga ->
+            lastFixQuality = gga.quality
+            rxFix = gga
+            lastNmea = nmea.trim()
+            lastGgaMs = System.currentTimeMillis()
         }
     }
 

@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.onlyti.rtkrouter"
-version = "1.0.6"
+version = "1.0.7"
 
 kotlin {
     jvmToolchain(17)
@@ -35,7 +35,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Msi)
             packageName = "rtk-router"
-            packageVersion = "1.0.6"
+            packageVersion = "1.0.7"
             description = "NTRIP RTCM router for GNSS receivers"
             vendor = "onlyti"
 

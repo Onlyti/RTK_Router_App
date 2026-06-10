@@ -42,6 +42,19 @@ source /opt/ros/noetic/setup.bash
 some_rtcm_source | python3 desktopApp/src/main/resources/ros/rtcm_ros_pub.py _rtcm_topic:=/rtcm
 ```
 
+## VRS GGA 되먹임 (선택)
+
+VRS/면보정 mount 는 rover 위치(GGA)가 있어야 보정이 내려온다. ROS 모드엔 시리얼 NMEA 경로가
+없으므로, 노드가 수신기 위치 토픽을 subscribe → GGA 합성 → stdout(`@@GGA@@ <nmea>`)으로
+rtk-router 에 되먹이고, rtk-router 가 caster 에 업로드한다. GUI 의 "수신기 위치 토픽" 칸(또는
+설정 JSON 의 `rosFixTopic`/`rosFixType`)으로 켠다. 비우면 사용 안 함(고정국 mount 만 쓸 때).
+
+지원 타입(`~fix_type`):
+- `navsatfix` — `sensor_msgs/NavSatFix` (범용, 기본; `/gps/gps`, `/ublox/fix` 등)
+- `navpvt` — `ublox_msgs/NavPVT` (u-blox, numSV·DOP 포함)
+- `bestpos` — `novatel_oem7_msgs/BESTPOS` (NovAtel)
+- `nmea` — `nmea_msgs/Sentence` (수신기가 NMEA GGA 를 내면 그대로 통과)
+
 ## 파라미터 (rospy `_name:=value`)
 
 | param | default | 설명 |
@@ -50,6 +63,9 @@ some_rtcm_source | python3 desktopApp/src/main/resources/ros/rtcm_ros_pub.py _rt
 | `~frame_id` | `""` | Header.frame_id |
 | `~frame_mode` | `true` | true=RTCM3 1프레임/메시지, false=받은 chunk 그대로 |
 | `~verify_crc` | `true` | CRC24Q 실패 프레임 폐기(노이즈 resync) |
+| `~fix_topic` | `""` | 수신기 위치 토픽 (비우면 GGA 되먹임 off) |
+| `~fix_type` | `navsatfix` | navsatfix / navpvt / bestpos / nmea |
+| `~gga_hz` | `1.0` | GGA 업로드 주기(Hz) |
 
 ## 검증
 

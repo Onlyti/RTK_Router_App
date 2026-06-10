@@ -172,6 +172,8 @@ class DesktopViewModel {
     fun setEndpointMode(m: EndpointMode) = updateConfig { it.copy(endpointMode = m) }
     fun setRosTopic(v: String) = updateConfig { it.copy(rosTopic = v.trim().ifBlank { "/rtcm" }) }
     fun setRosFrameId(v: String) = updateConfig { it.copy(rosFrameId = v.trim()) }
+    fun setRosFixTopic(v: String) = updateConfig { it.copy(rosFixTopic = v.trim()) }
+    fun setRosFixType(v: String) = updateConfig { it.copy(rosFixType = v) }
 
     fun scanEndpoints() {
         val profile = _settings.value.config.activeProfile
