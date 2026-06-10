@@ -92,4 +92,58 @@ class RosRtcmPublisher(
             null
         }
     }
+
+    /** Result of the pre-flight ROS environment check. */
+    sealed interface Preflight {
+        data object Ok : Preflight
+        /** python3/rospy not importable — app not launched from a ROS-sourced env. */
+        data object NoRos : Preflight
+        /** rospy ok but rtcm_msgs missing — offer `apt install ros-<distro>-rtcm-msgs`. */
+        data object MissingRtcmMsgs : Preflight
+        data class Error(val message: String) : Preflight
+    }
+
+    companion object {
+        /** ROS distro from env, defaulting to noetic (the rodea target). */
+        fun rosDistro(): String = System.getenv("ROS_DISTRO")?.takeIf { it.isNotBlank() } ?: "noetic"
+
+        fun rtcmMsgsPackage(): String = "ros-${rosDistro()}-rtcm-msgs"
+
+        /** Check that the spawned node will be able to import rospy + rtcm_msgs (same env). */
+        fun preflight(): Preflight = try {
+            val p = ProcessBuilder("python3", "-c", "import rospy, rtcm_msgs.msg")
+                .redirectErrorStream(true)
+                .start()
+            val out = p.inputStream.bufferedReader().readText()
+            if (p.waitFor() == 0) {
+                Preflight.Ok
+            } else {
+                when {
+                    "rtcm_msgs" in out -> Preflight.MissingRtcmMsgs
+                    "rospy" in out -> Preflight.NoRos
+                    else -> Preflight.Error(out.trim().take(300))
+                }
+            }
+        } catch (_: Throwable) {
+            Preflight.NoRos  // python3 not found -> ROS env not sourced
+        }
+
+        /** Install rtcm_msgs via pkexec (GUI auth prompt). Returns a user-facing result. */
+        fun installRtcmMsgs(): Result<String> {
+            val pkg = rtcmMsgsPackage()
+            return try {
+                val p = ProcessBuilder("pkexec", "apt-get", "install", "-y", pkg)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = p.inputStream.bufferedReader().readText()
+                if (p.waitFor() == 0) {
+                    Result.success("$pkg 설치 완료. START 를 다시 누르세요.")
+                } else {
+                    Result.failure(RuntimeException("설치 실패: ${out.trim().takeLast(300)}"))
+                }
+            } catch (t: Throwable) {
+                Result.failure(t)
+            }
+        }
+    }
 }

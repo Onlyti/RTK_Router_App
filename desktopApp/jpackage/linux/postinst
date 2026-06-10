@@ -9,6 +9,9 @@ case "$1" in
     configure)
         xdg-desktop-menu install /opt/rtk-router/lib/rtk-router-rtk-router.desktop || true
         ln -sf /opt/rtk-router/bin/rtk-router /usr/local/bin/rtk-router
+        # headless CLI launcher (Linux servers)
+        [ -e /opt/rtk-router/bin/rtk-router-cli ] && \
+            ln -sf /opt/rtk-router/bin/rtk-router-cli /usr/local/bin/rtk-router-cli
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

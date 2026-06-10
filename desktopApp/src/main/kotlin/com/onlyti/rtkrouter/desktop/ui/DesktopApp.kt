@@ -76,6 +76,7 @@ fun DesktopApp() {
         Column {
             DesktopScreen(vm, settings, status)
             PermissionDialog(vm)
+            RosDepDialog(vm)
         }
     }
 }
@@ -590,6 +591,41 @@ private fun PermissionDialog(vm: DesktopViewModel) {
                 }
                 TextButton(onClick = vm::dismissPermissionDialog) { Text("닫기") }
             }
+        },
+    )
+}
+
+@Composable
+private fun RosDepDialog(vm: DesktopViewModel) {
+    val dlg by vm.rosDepDialog.collectAsState()
+    if (!dlg.visible) return
+
+    AlertDialog(
+        onDismissRequest = vm::dismissRosDepDialog,
+        title = { Text("ROS 환경") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(dlg.message)
+                if (dlg.busy) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
+                        Text("설치 중...")
+                    }
+                }
+                if (dlg.resultMessage.isNotBlank()) {
+                    Text(dlg.resultMessage, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        },
+        confirmButton = {
+            if (dlg.canInstall) {
+                TextButton(onClick = vm::installRosDep, enabled = !dlg.busy) {
+                    Text(dlg.installLabel.ifBlank { "설치" })
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = vm::dismissRosDepDialog) { Text("닫기") }
         },
     )
 }

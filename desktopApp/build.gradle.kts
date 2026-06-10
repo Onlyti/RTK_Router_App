@@ -74,6 +74,12 @@ tasks.withType<AbstractJPackageTask>().configureEach {
     // after install. Overriding jpackage's resource-dir doesn't take because
     // Compose passes its own resource-dir, so we patch the finished artifact.
     // Canonical scripts live in jpackage/linux/.
+    // Ship a headless CLI launcher (Linux) alongside the GUI: /opt/rtk-router/bin/rtk-router-cli
+    // runs com.onlyti.rtkrouter.desktop.CliMainKt (reads the GUI's settings.json, no display).
+    if (targetFormat == TargetFormat.Deb) {
+        freeArgs.add("--add-launcher")
+        freeArgs.add("rtk-router-cli=" + project.file("jpackage/cli-launcher.properties").absolutePath)
+    }
     if (targetFormat == TargetFormat.Deb) {
         doLast {
             val debDir = project.layout.buildDirectory.dir("compose/binaries/main-release/deb").get().asFile

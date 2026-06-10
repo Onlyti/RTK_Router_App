@@ -65,7 +65,20 @@ Connection 모드에 `ROS /rtcm (u-blox)` 가 있다. 선택 후 START 하면 �
 띄워 수신 RTCM3 를 `rtcm_msgs/Message`(기본 `/rtcm`)로 떠 있는 ROS master 에 publish 한다.
 본체는 ROS 의존성이 없고(ROS 모드일 때만 `python3` 실행), rospy 가 ROS 프로토콜을 처리한다.
 `ublox_gps` 등이 `/rtcm` 을 subscribe → M8P RTK fix. 앱은 ROS source 된 터미널에서 실행할 것.
+ROS 모드 START 시 `rtcm_msgs` 가 없으면 경고 후 pkexec 로 자동 설치한다(ROS 모드 한정).
 상세·검증: [ros/README.md](ros/README.md)
+
+#### Headless CLI (Linux 서버)
+디스플레이 없는 서버용 CLI 런처가 같이 설치된다(`rtk-router-cli`, GUI 와 동일 .deb).
+GUI 로 한번 설정하면 `~/.config/rtk-router/settings.json` 에 자동 저장되므로, 그 파일을 서버에
+복사하거나 직접 작성해 CLI 로 실행한다(GUI 불필요).
+```bash
+rtk-router-cli                       # 기본 설정 경로 사용
+rtk-router-cli -c /path/settings.json
+rtk-router-cli --help
+```
+- 설정의 `connectionMode` = `RS232` / `NOVATEL_USB` / `ROS_RTCM`. ROS 모드면 ROS source 된
+  환경에서 실행(rospy/rtcm_msgs 필요). 상태를 stdout 으로 주기 출력, Ctrl-C 로 종료.
 
 ## 참조
 - phone-sensor-stream: 같은 Kotlin/Compose 스택, USB/GNSS(gnsstest) 코드 재사용 후보.

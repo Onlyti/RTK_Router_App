@@ -1,5 +1,6 @@
 package com.onlyti.rtkrouter.desktop.ui
 
+import com.onlyti.rtkrouter.desktop.bridge.RosRtcmPublisher
 import com.onlyti.rtkrouter.desktop.bridge.RtkBridge
 import com.onlyti.rtkrouter.desktop.config.CasterPreset
 import com.onlyti.rtkrouter.desktop.config.CasterProfile
@@ -44,6 +45,16 @@ data class PermissionDialogState(
     val resultMessage: String = "",
 )
 
+/** ROS dependency prompt (ROS mode only): rtcm_msgs missing, or ROS env not sourced. */
+data class RosDepDialogState(
+    val visible: Boolean = false,
+    val message: String = "",
+    val canInstall: Boolean = false,
+    val installLabel: String = "",
+    val busy: Boolean = false,
+    val resultMessage: String = "",
+)
+
 class DesktopViewModel {
     private val prefs = DesktopPrefs()
     private val bridge = RtkBridge()
@@ -62,6 +73,9 @@ class DesktopViewModel {
 
     private val _permissionDialog = MutableStateFlow(PermissionDialogState())
     val permissionDialog: StateFlow<PermissionDialogState> = _permissionDialog
+
+    private val _rosDepDialog = MutableStateFlow(RosDepDialogState())
+    val rosDepDialog: StateFlow<RosDepDialogState> = _rosDepDialog
 
     private var portScanJob: Job? = null
 
@@ -187,12 +201,39 @@ class DesktopViewModel {
 
     fun start() {
         val s = _settings.value
-        // ROS mode: no local serial — spawn the rospy node and pipe RTCM to it.
+        // ROS mode: no local serial — pre-flight the ROS env, then spawn the rospy node.
         if (s.connectionMode == SerialConnectionMode.ROS_RTCM) {
-            bridge.start(
-                s.config,
-                SerialConnectOptions(mode = SerialConnectionMode.ROS_RTCM, devicePath = "", baud = s.config.baud),
-            )
+            scope.launch(Dispatchers.IO) {
+                when (val pf = RosRtcmPublisher.preflight()) {
+                    RosRtcmPublisher.Preflight.Ok ->
+                        bridge.start(
+                            s.config,
+                            SerialConnectOptions(mode = SerialConnectionMode.ROS_RTCM, devicePath = "", baud = s.config.baud),
+                        )
+                    RosRtcmPublisher.Preflight.MissingRtcmMsgs ->
+                        _rosDepDialog.value = RosDepDialogState(
+                            visible = true,
+                            canInstall = true,
+                            message = "${RosRtcmPublisher.rtcmMsgsPackage()} 패키지가 없습니다.\n" +
+                                "이 패키지가 있어야 /rtcm 을 publish 할 수 있습니다. 지금 설치할까요?",
+                            installLabel = "pkexec 로 설치",
+                        )
+                    RosRtcmPublisher.Preflight.NoRos ->
+                        _rosDepDialog.value = RosDepDialogState(
+                            visible = true,
+                            canInstall = false,
+                            message = "ROS 환경(rospy/python3)을 찾을 수 없습니다.\n" +
+                                "ROS 가 source 된 터미널에서 앱을 실행하세요 " +
+                                "(예: source /opt/ros/noetic/setup.bash 후 실행).",
+                        )
+                    is RosRtcmPublisher.Preflight.Error ->
+                        _rosDepDialog.value = RosDepDialogState(
+                            visible = true,
+                            canInstall = false,
+                            message = "ROS 사전 점검 실패:\n${pf.message}",
+                        )
+                }
+            }
             return
         }
         val path = s.serialDevicePath
@@ -243,6 +284,23 @@ class DesktopViewModel {
 
     fun stop() = bridge.stop()
     fun resetUsage() = bridge.resetUsage()
+
+    fun dismissRosDepDialog() {
+        _rosDepDialog.value = RosDepDialogState()
+    }
+
+    /** Install rtcm_msgs via pkexec; on success the user re-presses START. */
+    fun installRosDep() {
+        _rosDepDialog.value = _rosDepDialog.value.copy(busy = true, resultMessage = "")
+        scope.launch(Dispatchers.IO) {
+            val result = RosRtcmPublisher.installRtcmMsgs()
+            _rosDepDialog.value = _rosDepDialog.value.copy(
+                busy = false,
+                canInstall = result.isFailure,
+                resultMessage = result.fold(onSuccess = { it }, onFailure = { it.message ?: "설치 실패" }),
+            )
+        }
+    }
 
     fun dismissPermissionDialog() {
         _permissionDialog.value = _permissionDialog.value.copy(visible = false, sudoPassword = "", resultMessage = "")
