@@ -18,11 +18,19 @@ EN:
 ```
 RTK Router turns your phone into an NTRIP correction router. It receives RTCM3 RTK
 correction data from an NTRIP caster over your mobile internet and injects it into a
-GNSS receiver connected by USB-C OTG — giving the receiver centimetre-level RTK.
+GNSS receiver — giving the receiver centimetre-level RTK.
+
+How to connect
+- Most receivers: connect to the receiver's serial (UART/COM) port through a
+  USB-C-to-serial adapter (FTDI, CP210x, CH340, or Prolific). Plug the adapter into the
+  phone's USB-C (OTG) port and wire it to the receiver's serial port, then set the
+  matching baud rate in the app.
+- u-blox (e.g. F9P) and NovAtel receivers with native USB: connect directly to the phone
+  by USB-C OTG cable — no adapter needed.
 
 Features
 - NTRIP v1/v2 client (Basic auth, GGA upload for VRS)
-- USB serial to the receiver (CDC-ACM / FTDI / CP210x / CH340 / Prolific)
+- USB serial bridge (CDC-ACM / FTDI / CP210x / CH340 / Prolific)
 - AUTO mountpoint: prefers RTCM3 VRS; sourcetable Scan to pick manually
 - Multi-network hot-standby: keep several casters connected, fail over seamlessly if a
   whole network drops
@@ -30,25 +38,41 @@ Features
 - Position for VRS comes from the receiver itself — no phone location permission needed
 - Live status: NTRIP / RTCM rate / serial / fix quality, data usage, trajectory map
 
-Works with u-blox (e.g. F9P) and other RTCM3 receivers. You need your own NTRIP account.
-Not affiliated with any receiver or caster vendor.
+What you need
+- A USB-C-to-serial adapter for serial-port receivers, or a USB-C OTG cable for
+  u-blox / NovAtel USB receivers
+- Your own NTRIP account (caster credentials)
+
+Works with u-blox (e.g. F9P), NovAtel, and other RTCM3 receivers. Not affiliated with
+any receiver or caster vendor.
 ```
 
 KR:
 ```
 RTK Router 는 스마트폰을 NTRIP 보정 라우터로 만듭니다. 모바일 인터넷으로 NTRIP caster 에서
-RTCM3 RTK 보정정보를 받아 USB-C OTG 로 연결한 GNSS 수신기에 주입해 cm급 RTK 를 얻습니다.
+RTCM3 RTK 보정정보를 받아 GNSS 수신기에 주입해 cm급 RTK 를 얻습니다.
+
+연결 방법
+- 대부분의 수신기: 수신기의 시리얼(UART/COM) 포트에 USB-C-to-serial 어댑터
+  (FTDI / CP210x / CH340 / Prolific)로 연결합니다. 어댑터를 폰 USB-C(OTG)에 꽂고
+  수신기 시리얼 포트와 결선한 뒤, 앱에서 수신기에 맞는 baud 를 설정하세요.
+- u-blox(F9P 등)·NovAtel 등 USB 내장 수신기: USB-C OTG 케이블로 폰에 직결
+  — 어댑터 불필요.
 
 기능
 - NTRIP v1/v2 클라이언트 (Basic 인증, VRS GGA 업로드)
-- USB 시리얼 (CDC-ACM / FTDI / CP210x / CH340 / Prolific)
+- USB 시리얼 브리지 (CDC-ACM / FTDI / CP210x / CH340 / Prolific)
 - AUTO mountpoint: RTCM3 VRS 우선, sourcetable Scan 으로 수동 선택
 - 다중망 hot-standby: 여러 caster 동시 유지, 한 망 장애 시 끊김 없이 전환
 - 국가 preset (국토지리정보원 통합센터, 서울 VRS) + RTK2GO 커뮤니티
 - VRS 위치는 수신기에서 — 폰 위치권한 불필요
 - 실시간 상태(NTRIP/RTCM rate/serial/fix), 데이터 사용량, 이동경로 지도
 
-u-blox(F9P 등) 및 RTCM3 수신기 호환. 본인 NTRIP 계정 필요. 수신기·caster 벤더와 무관.
+필요한 것
+- 시리얼 포트 수신기는 USB-C-to-serial 어댑터, u-blox/NovAtel USB 수신기는 USB-C OTG 케이블
+- 본인 NTRIP 계정(caster 자격증명)
+
+u-blox(F9P 등)·NovAtel·기타 RTCM3 수신기 호환. 수신기·caster 벤더와 무관.
 ```
 
 ## 그래픽 자료 (네가 준비)
